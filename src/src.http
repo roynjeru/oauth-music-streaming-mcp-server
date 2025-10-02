@@ -4,3 +4,5 @@ GET {{src_HostAddress}}/
 Accept: application/json
 
 ###
+Get https://localhost:5296/authorize?client_id=123&redirect_uri=https://localhost:5296&response_type=code&code_challenge_method=S256&code_challenge=test&resource=http://test.com
+

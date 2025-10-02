@@ -13,9 +13,9 @@ internal sealed class AuthorizationCodeInfo
     public required string ClientId { get; init; }
 
     /// <summary>
-    /// Gets or sets the redirect URI associated with this authorization code.
+    /// Gets or sets the client redirect URI associated with this authorization code.
     /// </summary>
-    public required string RedirectUri { get; init; }
+    public required string ClientRedirectUri { get; init; }
 
     /// <summary>
     /// Gets or sets the code challenge associated with this authorization code (for PKCE).
@@ -31,4 +31,10 @@ internal sealed class AuthorizationCodeInfo
     /// Gets or sets the optional resource URI this authorization code is for.
     /// </summary>
     public Uri? Resource { get; init; }
+
+    public string SpotifyCodeVerifier { get; init; } = string.Empty;
+
+    public string ClientState { get; init; } = string.Empty;
+
+    public string SpotifyAuthCode { get; set; } = string.Empty;
 }
