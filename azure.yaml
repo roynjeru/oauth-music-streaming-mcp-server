@@ -5,10 +5,10 @@ metadata:
     template: azd-init@1.19.0
 services:
     src:
-        project: src
+        project: src/app
         host: containerapp
         language: dotnet
 resources:
     src:
         type: host.containerapp
-        port: 8080
+        port: 80
