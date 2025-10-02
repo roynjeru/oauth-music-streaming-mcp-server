@@ -1,4 +1,5 @@
 .azure
+src/bin/
+src/obj/
 next-steps.md
-src/obj
-src/bin
+.DS_Store
