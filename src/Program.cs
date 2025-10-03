@@ -212,6 +212,14 @@ app.MapGet("/spotify-callback", (
     return Results.Redirect(authCodeInfo.ClientRedirectUri);
 });
 
+// Testing endpoint for scripting client redirect on /authorize
+app.MapGet("/test", (
+    [FromQuery] string? code
+) =>
+{
+    return Results.Ok($"Test successfulw with code: {code}");
+});
+
 // JWKS endpoint to expose the public key
 app.MapGet("/.well-known/jwks.json", () =>
 {
