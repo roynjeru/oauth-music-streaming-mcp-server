@@ -10,8 +10,8 @@ using src.Models;
 var builder = WebApplication.CreateBuilder(args);
 
 // get URL and port from environment variable if set
-var _url = Environment.GetEnvironmentVariable("ASPNETCORE_URLS");
-Uri urlUri = new Uri(_url);
+var env_url = Environment.GetEnvironmentVariable("ASPNETCORE_URLS");
+Uri urlUri = new Uri(env_url);
 int port = urlUri.Port;
 var spotifyAuthUrl = "https://accounts.spotify.com/authorize";
 var spotifyScopes = "user-read-private user-read-email streaming user-read-playback-state user-modify-playback-state";
@@ -19,7 +19,7 @@ var spotifyClientId = "04e740f554cc46469e3645a37b861a75";
 var spotifyRedirectUri = "https://127.0.0.1:5296/spotify-callback";
 
 // Port 5000 is used by tests and port 7071 is used by the ProtectedMcpServer sample
-string[] ValidResources = ["http://localhost:5000/", "http://localhost:7071/"];
+// string[] ValidResources = ["http://localhost:5000/", "http://localhost:7071/"];
 
 ConcurrentDictionary<string, AuthorizationCodeInfo> _authCodes = new();
 ConcurrentDictionary<string, string> _mcpCodeMap = new();
@@ -70,14 +70,16 @@ string[] metadataEndpoints = ["/.well-known/oauth-authorization-server", "/.well
 foreach (var metadataEndpoint in metadataEndpoints)
 {
     // OAuth 2.0 Authorization Server Metadata (RFC 8414)
-    app.MapGet(metadataEndpoint, () =>
+    app.MapGet(metadataEndpoint, (HttpContext context, HttpRequest request) =>
     {
+        string requestUrl = $"{request.Scheme}://{request.Host}";
+        var obj = new { context, request };
         var metadata = new OAuthServerMetadata
         {
-            Issuer = _url,
-            AuthorizationEndpoint = $"{_url}/authorize",
-            TokenEndpoint = $"{_url}/token",
-            JwksUri = $"{_url}/.well-known/jwks.json",
+            Issuer = requestUrl, // env_url,
+            AuthorizationEndpoint = $"{requestUrl}/authorize",
+            TokenEndpoint = $"{requestUrl}/token",
+            JwksUri = $"{requestUrl}/.well-known/jwks.json",
             ResponseTypesSupported = ["code"],
             SubjectTypesSupported = ["public"],
             IdTokenSigningAlgValuesSupported = ["RS256"],
@@ -86,8 +88,8 @@ foreach (var metadataEndpoint in metadataEndpoints)
             ClaimsSupported = ["sub", "iss", "name", "email", "aud"],
             CodeChallengeMethodsSupported = ["S256"],
             GrantTypesSupported = ["authorization_code", "refresh_token"],
-            IntrospectionEndpoint = $"{_url}/introspect",
-            RegistrationEndpoint = $"{_url}/register"
+            IntrospectionEndpoint = $"{requestUrl}/introspect",
+            RegistrationEndpoint = $"{requestUrl}/register"
         };
 
         return Results.Ok(metadata);
@@ -103,42 +105,42 @@ app.MapGet("/authorize", (
     [FromQuery] string code_challenge_method,
     [FromQuery] string? scope,
     [FromQuery] string? state,
-    [FromQuery] string? resource) =>
+    [FromQuery] string? resource, HttpRequest request) =>
 {
     // Validate client
-    if (!_clients.TryGetValue(client_id, out var client))
-    {
-        return Results.BadRequest(new OAuthErrorResponse
-        {
-            Error = "invalid_client",
-            ErrorDescription = "Client not found"
-        });
-    }
+    // if (!_clients.TryGetValue(client_id, out var client))
+    // {
+    //     return Results.BadRequest(new OAuthErrorResponse
+    //     {
+    //         Error = "invalid_client",
+    //         ErrorDescription = "Client not found"
+    //     });
+    // }
 
     // Validate redirect_uri
-    if (string.IsNullOrEmpty(redirect_uri))
-    {
-        if (client.RedirectUris.Count == 1)
-        {
-            redirect_uri = client.RedirectUris[0];
-        }
-        else
-        {
-            return Results.BadRequest(new OAuthErrorResponse
-            {
-                Error = "invalid_request",
-                ErrorDescription = "redirect_uri is required when client has multiple registered URIs"
-            });
-        }
-    }
-    else if (!client.RedirectUris.Contains(redirect_uri))
-    {
-        return Results.BadRequest(new OAuthErrorResponse
-        {
-            Error = "invalid_request",
-            ErrorDescription = "Unregistered redirect_uri"
-        });
-    }
+    // if (string.IsNullOrEmpty(redirect_uri))
+    // {
+    //     if (client.RedirectUris.Count == 1)
+    //     {
+    //         redirect_uri = client.RedirectUris[0];
+    //     }
+    //     else
+    //     {
+    //         return Results.BadRequest(new OAuthErrorResponse
+    //         {
+    //             Error = "invalid_request",
+    //             ErrorDescription = "redirect_uri is required when client has multiple registered URIs"
+    //         });
+    //     }
+    // }
+    // else if (!client.RedirectUris.Contains(redirect_uri))
+    // {
+    //     return Results.BadRequest(new OAuthErrorResponse
+    //     {
+    //         Error = "invalid_request",
+    //         ErrorDescription = "Unregistered redirect_uri"
+    //     });
+    // }
 
     // Validate response_type
     if (response_type != "code")
@@ -153,10 +155,10 @@ app.MapGet("/authorize", (
     }
 
     // Validate resource in accordance with RFC 8707
-    if (string.IsNullOrEmpty(resource) || !ValidResources.Contains(resource))
-    {
-        return Results.Redirect($"{redirect_uri}?error=invalid_target&error_description=The+specified+resource+is+not+valid&state={state}");
-    }
+    // if (string.IsNullOrEmpty(resource) || !ValidResources.Contains(resource))
+    // {
+    //     return Results.Redirect($"{redirect_uri}?error=invalid_target&error_description=The+specified+resource+is+not+valid&state={state}");
+    // }
 
     // Generate a new authorization code
     var code = HelperMethods.GenerateRandomToken();
@@ -165,7 +167,7 @@ app.MapGet("/authorize", (
     var spotifyChallenge = HelperMethods.ComputeCodeChallengeS256(spotifyVerifier);
     var serverState = HelperMethods.generateRandomString(32);
 
-        // Redirect back to client with the code
+    // Redirect back to client with the code
     var redirectUrl = $"{redirect_uri}?code={code}";
     if (!string.IsNullOrEmpty(state))
     {
@@ -183,6 +185,11 @@ app.MapGet("/authorize", (
         SpotifyCodeVerifier = spotifyVerifier,
         ClientState = state ?? string.Empty
     };
+
+    if (!request.Host.ToString().Contains("localhost") && !request.Host.ToString().Contains("127.0.0.1"))
+    {
+        spotifyRedirectUri = $"{request.Scheme}://{request.Host}/spotify-callback";
+    }
 
     var spotifyRedirect = $"{spotifyAuthUrl}?response_type=code&client_id={spotifyClientId}&scope={Uri.EscapeDataString(spotifyScopes)}&redirect_uri={Uri.EscapeDataString(spotifyRedirectUri)}&code_challenge_method=S256&code_challenge={spotifyChallenge}&state={serverState}";
 
