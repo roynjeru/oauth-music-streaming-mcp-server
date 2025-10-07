@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
 using src.Helpers;
 using src.Models;
+using src.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -35,6 +36,8 @@ builder.Services.ConfigureHttpJsonOptions(jsonOptions =>
     jsonOptions.SerializerOptions.TypeInfoResolverChain.Add(OAuthJsonContext.Default);
 });
 builder.Logging.AddConsole();
+builder.Services.AddHttpClient();
+builder.Services.AddTransient<HttpService>();
 
 // configure OpenTelemetry
 builder.Services.AddOpenTelemetry().UseAzureMonitor();
@@ -150,21 +153,26 @@ app.MapGet("/authorize", (
     // }
 
     // Generate a new authorization code
-    var code = HelperMethods.GenerateRandomToken();
+    var mcpAuthCode = HelperMethods.GenerateRandomToken();
     var requestedScopes = scope?.Split(' ').ToList() ?? [];
     var spotifyVerifier = HelperMethods.GenerateCodeVerifier();
     var spotifyChallenge = HelperMethods.ComputeCodeChallengeS256(spotifyVerifier);
-    var serverState = HelperMethods.generateRandomString(32);
+    var spotifyServerState = HelperMethods.generateRandomString(32);
 
     // Redirect back to client with the code
-    var redirectUrl = $"{redirect_uri}?code={code}";
+    var redirectUrl = $"{redirect_uri}?code={mcpAuthCode}";
     if (!string.IsNullOrEmpty(state))
     {
         redirectUrl += $"&state={Uri.EscapeDataString(state)}";
     }
 
+    if (!request.Host.ToString().Contains("localhost") && !request.Host.ToString().Contains("127.0.0.1"))
+    {
+        spotifyRedirectUri = $"https://{request.Host}/spotify-callback";
+    }
+
     // Store code information for later verification
-    _authCodes[code] = new AuthorizationCodeInfo
+    _authCodes[mcpAuthCode] = new AuthorizationCodeInfo
     {
         ClientId = client_id,
         ClientRedirectUri = redirectUrl,
@@ -172,25 +180,23 @@ app.MapGet("/authorize", (
         Scope = requestedScopes,
         Resource = !string.IsNullOrEmpty(resource) ? new Uri(resource) : null,
         SpotifyCodeVerifier = spotifyVerifier,
-        ClientState = state ?? string.Empty
+        ClientState = state ?? string.Empty,
+        SpotifyState = spotifyServerState,
+        SpofityRedirectUri = spotifyRedirectUri
     };
 
-    if (!request.Host.ToString().Contains("localhost") && !request.Host.ToString().Contains("127.0.0.1"))
-    {
-        spotifyRedirectUri = $"https://{request.Host}/spotify-callback";
-    }
+    
 
-    var spotifyRedirect = $"{spotifyAuthUrl}?response_type=code&client_id={spotifyClientId}&scope={Uri.EscapeDataString(spotifyScopes)}&redirect_uri={Uri.EscapeDataString(spotifyRedirectUri)}&code_challenge_method=S256&code_challenge={spotifyChallenge}&state={serverState}";
+    var spotifyRedirect = $"{spotifyAuthUrl}?response_type=code&client_id={spotifyClientId}&scope={Uri.EscapeDataString(spotifyScopes)}&redirect_uri={Uri.EscapeDataString(spotifyRedirectUri)}&code_challenge_method=S256&code_challenge={spotifyChallenge}&state={spotifyServerState}";
 
     app.Logger.LogInformation("Redirecting to Spotify: {spotifyRedirect}", spotifyRedirect);
 
-    _mcpCodeMap[serverState] = code;
+    _mcpCodeMap[spotifyServerState] = mcpAuthCode;
 
     return Results.Redirect(spotifyRedirect); // redirect to spotify, then redirect back to initial URL???
 });
 
-
-app.MapGet("/spotify-callback", (
+app.MapGet("/spotify-callback", async (
     [FromQuery] string code,
     [FromQuery] string state
 ) =>
@@ -200,15 +206,34 @@ app.MapGet("/spotify-callback", (
     authCodeInfo.SpotifyAuthCode = code; // update the auth code info with the spotify code
     _authCodes[mcpCode] = authCodeInfo;
 
-    return Results.Redirect(authCodeInfo.ClientRedirectUri);
+    var clientRedirectUri = authCodeInfo.ClientRedirectUri;
+
+    SpotifyTokenRequest tokenRequest = new SpotifyTokenRequest
+    {
+        GrantType = "authorization_code",
+        Code = code,
+        RedirectUri = authCodeInfo.SpofityRedirectUri,
+        ClientId = spotifyClientId,
+        CodeVerifier = authCodeInfo.SpotifyCodeVerifier
+    };
+    var httpService = app.Services.GetRequiredService<HttpService>();
+
+    var spotifyTokenResponse = await httpService.GetSpotifyAccessToken(tokenRequest);
+
+    // return to client with MCP Server auth code 
+    return Results.Redirect(clientRedirectUri);
 });
 
 // Testing endpoint for scripting client redirect on /authorize
-app.MapGet("/test", (
-    [FromQuery] string? code
+app.MapGet("/dummyRedirect", (
+    [FromQuery] string code,
+    [FromQuery] string? state
 ) =>
 {
-    return Results.Ok($"Test successfull with code: {code}");
+    var mcpAuthCode = _mcpCodeMap[code];
+    var authCodeInfo = _authCodes[mcpAuthCode];
+    
+    return Results.Ok($"Test successfull with code: {code}, state: {state}, redirect_uri: {authCodeInfo.SpofityRedirectUri}, code_verifier: {authCodeInfo.SpotifyCodeVerifier}");
 });
 
 // JWKS endpoint to expose the public key
@@ -238,7 +263,7 @@ app.MapGet("/.well-known/jwks.json", () =>
     return Results.Ok(jwks);
 });
 
-
+app.MapGet("/probe", () => Results.Ok("Server is running"));
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())

@@ -17,6 +17,8 @@ internal sealed class AuthorizationCodeInfo
     /// </summary>
     public required string ClientRedirectUri { get; init; }
 
+    public string SpofityRedirectUri { get; init; } = string.Empty;
+
     /// <summary>
     /// Gets or sets the code challenge associated with this authorization code (for PKCE).
     /// </summary>
@@ -35,6 +37,8 @@ internal sealed class AuthorizationCodeInfo
     public string SpotifyCodeVerifier { get; init; } = string.Empty;
 
     public string ClientState { get; init; } = string.Empty;
+
+    public string SpotifyState { get; init; } = string.Empty;
 
     public string SpotifyAuthCode { get; set; } = string.Empty;
 }
