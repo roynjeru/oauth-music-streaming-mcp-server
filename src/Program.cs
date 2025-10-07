@@ -15,7 +15,7 @@ int port = int.Parse(Environment.GetEnvironmentVariable("WEBSITE_PORT"));
 var spotifyAuthUrl = "https://accounts.spotify.com/authorize";
 var spotifyScopes = "user-read-private user-read-email streaming user-read-playback-state user-modify-playback-state";
 var spotifyClientId = "04e740f554cc46469e3645a37b861a75";
-var spotifyRedirectUri = "https://127.0.0.1:7029/spotify-callback";
+var spotifyRedirectUri = "http://127.0.0.1:8080/spotify-callback";
 
 // Port 5000 is used by tests and port 7071 is used by the ProtectedMcpServer sample
 // string[] ValidResources = ["http://localhost:5000/", "http://localhost:7071/"];
@@ -32,12 +32,6 @@ builder.Services.AddLogging(config =>
 {
     config.AddConsole();
     config.SetMinimumLevel(LogLevel.Debug);
-});
-
-builder.WebHost.ConfigureKestrel((context, options) =>
-{
-    var kesterlSection = context.Configuration.GetSection("Kestrel");
-    options.Configure(kesterlSection);
 });
 
 builder.Services.AddRoutingCore();
