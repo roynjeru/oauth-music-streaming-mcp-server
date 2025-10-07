@@ -5,3 +5,4 @@ src/app/obj/
 src/app/bin/
 next-steps.md
 .DS_Store
+*.pfx
