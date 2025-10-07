@@ -8,4 +8,4 @@ Get https://0.0.0.0:7029/authorize?client_id=123&redirect_uri=https://0.0.0.0:70
 
 
 ### deployed app
-GET https://src.ambitiousdesert-52c4453d.eastus2.azurecontainerapps.io:5296/authorize?client_id=123&redirect_uri=https://0.0.0.0:7029/test&response_type=code&code_challenge_method=S256&code_challenge=test&resource=http://test.com
+GET https://src.ambitiousdesert-52c4453d.eastus2.azurecontainerapps.io/authorize?client_id=123&redirect_uri=http://0.0.0.0:8080/test&response_type=code&code_challenge_method=S256&code_challenge=test&resource=http://test.com

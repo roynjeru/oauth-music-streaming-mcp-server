@@ -1,3 +1,4 @@
+using Azure.Monitor.OpenTelemetry.AspNetCore;
 using System.Collections.Concurrent;
 using System.Reflection;
 using System.Security.Cryptography;
@@ -28,18 +29,15 @@ ConcurrentDictionary<string, ClientInfo> _clients = new();
 RSA _rsa = RSA.Create(2048);
 string _keyID = Guid.NewGuid().ToString();
 
-builder.Services.AddLogging(config =>
-{
-    config.AddConsole();
-    config.SetMinimumLevel(LogLevel.Debug);
-});
-
 builder.Services.AddRoutingCore();
 builder.Services.ConfigureHttpJsonOptions(jsonOptions =>
 {
     jsonOptions.SerializerOptions.TypeInfoResolverChain.Add(OAuthJsonContext.Default);
 });
 builder.Logging.AddConsole();
+
+// configure OpenTelemetry
+builder.Services.AddOpenTelemetry().UseAzureMonitor();
 
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
@@ -179,10 +177,12 @@ app.MapGet("/authorize", (
 
     if (!request.Host.ToString().Contains("localhost") && !request.Host.ToString().Contains("127.0.0.1"))
     {
-        spotifyRedirectUri = $"{request.Scheme}://{request.Host}/spotify-callback";
+        spotifyRedirectUri = $"https://{request.Host}/spotify-callback";
     }
 
     var spotifyRedirect = $"{spotifyAuthUrl}?response_type=code&client_id={spotifyClientId}&scope={Uri.EscapeDataString(spotifyScopes)}&redirect_uri={Uri.EscapeDataString(spotifyRedirectUri)}&code_challenge_method=S256&code_challenge={spotifyChallenge}&state={serverState}";
+
+    app.Logger.LogInformation("Redirecting to Spotify: {spotifyRedirect}", spotifyRedirect);
 
     _mcpCodeMap[serverState] = code;
 
