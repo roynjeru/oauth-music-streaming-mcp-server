@@ -9,7 +9,8 @@
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
         "WEBSITE_PORT": "7029",
-        "ASPNETCORE_URLS": "http://0.0.0.0:8080"
+        "ASPNETCORE_URLS": "http://0.0.0.0:8080",
+        "APPLICATIONINSIGHTS_CONNECTION_STRING": ""
       }
     }
   }
