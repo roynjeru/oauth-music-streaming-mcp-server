@@ -17,7 +17,7 @@ namespace src.Helpers
             return WebEncoders.Base64UrlEncode(bytes);
         }
 
-                public static string generateRandomString(int length)
+        public static string generateRandomString(int length)
         {
             var chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
             var stringChars = new char[length];

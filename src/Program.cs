@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.WebUtilities;
 using src.Helpers;
 using src.Models;
 using src.Services;
+using Microsoft.AspNetCore.Http.HttpResults;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -25,7 +26,7 @@ var spotifyRedirectUri = "http://127.0.0.1:8080/spotify-callback";
 ConcurrentDictionary<string, AuthorizationCodeInfo> _authCodes = new();
 ConcurrentDictionary<string, string> _mcpCodeMap = new();
 ConcurrentDictionary<string, TokenInfo> _tokens = new();
-ConcurrentDictionary<string, ClientInfo> _clients = new();
+ConcurrentDictionary<string, RegisteredClient> _registeredClients = new();
 
 RSA _rsa = RSA.Create(2048);
 string _keyID = Guid.NewGuid().ToString();
@@ -88,6 +89,155 @@ foreach (var metadataEndpoint in metadataEndpoints)
     });
 }
 
+app.MapPost("/register", ([FromBody] RegisterRequest? regReqBody, HttpRequest request) =>
+{
+    if (regReqBody == null)
+    {
+        return Results.Json(new
+        {
+            error = "invalid_client_metadata",
+            error_description = "Request body is required"
+        }, statusCode: 400, contentType: "application/json");
+    }
+
+    if (regReqBody.redirect_uris == null || regReqBody.redirect_uris.Length == 0)
+    {
+        return Results.Json(new
+        {
+            error = "invalid_redirect_uri",
+            error_description = "At least one redirect_uri is required"
+        }, statusCode: 400, contentType: "application/json");
+    }
+
+    foreach (var uri in regReqBody.redirect_uris)
+    {
+        if (!HelperMethods.IsValidRedirectUri(uri))
+        {
+            return Results.Json(new
+            {
+                error = "invalid_redirect_uri",
+                error_description = $"The redirect_uri '{uri}' is not valid"
+            }, statusCode: 400, contentType: "application/json");
+        }
+    }
+
+    // Example: check for inconsistent grant_types/response_types
+    if (regReqBody.grant_types != null && regReqBody.response_types != null)
+    {
+        // If response_types contains "code", grant_types must contain "authorization_code"
+        if (regReqBody.response_types.Contains("code") && !regReqBody.grant_types.Contains("authorization_code"))
+        {
+            return Results.Json(new
+            {
+                error = "invalid_client_metadata",
+                error_description = "The grant type 'authorization_code' must be registered along with the response type 'code'."
+            }, statusCode: 400, contentType: "application/json");
+        }
+    }
+
+    // determine client's requested auth method for token endpoint
+    var clientAuthMethod = string.IsNullOrEmpty(regReqBody.token_endpoint_auth_method) ? "none" : regReqBody.token_endpoint_auth_method;
+
+    var clientId = HelperMethods.generateRandomString(24);
+
+    string? clientSecret = null;
+
+    if (clientAuthMethod == "client_secret_basic" || clientAuthMethod == "client_secret_post")
+    {
+        clientSecret = HelperMethods.generateRandomString(40);
+    }
+
+    var registrationAccessToken = HelperMethods.generateRandomString(40);
+    var issuedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+    var registrationClientUri = $"https://{request.Host}/register/{clientId}";
+
+    var registered = new RegisteredClient
+    {
+        ClientId = clientId,
+        ClientSecret = clientSecret,
+        RedirectUris = regReqBody.redirect_uris,
+        ClientName = regReqBody.client_name,
+        TokenEndpointAuthMethod = clientAuthMethod,
+        GrantTypes = regReqBody.grant_types ?? new string[] { "authorization_code" },
+        ResponseTypes = regReqBody.response_types ?? new string[] { "code" },
+        Scope = regReqBody.scope,
+        RegistrationAccessToken = registrationAccessToken,
+        ClientIdIssuedAt = issuedAt,
+        RegistrationClientUri = registrationClientUri
+    };
+
+    _registeredClients[clientId] = registered;
+
+    var resp = new RegisterResponse
+    {
+        client_id = registered.ClientId,
+        client_secret = registered.ClientSecret,
+        client_id_issued_at = registered.ClientIdIssuedAt,
+        client_secret_expires_at = "0", // never expires
+        redirect_uris = registered.RedirectUris,
+        grant_types = registered.GrantTypes,
+        registration_client_uri = registered.RegistrationClientUri,
+        registration_access_token = registered.RegistrationAccessToken,
+        token_endpoint_auth_method = registered.TokenEndpointAuthMethod,
+        response_types = registered.ResponseTypes,
+        scope = registered.Scope
+    };
+
+    return Results.Created(registered.RegistrationClientUri, resp);
+});
+
+app.MapGet("/register/{clientId}", (
+    [FromRoute] string clientId, HttpRequest request) =>
+{
+    if (string.IsNullOrEmpty(clientId) || !_registeredClients.TryGetValue(clientId, out var client))
+    {
+        return Results.Json(new
+        {
+            error = "invalid_client",
+            error_description = "Client not found"
+        }, statusCode: 404, contentType: "application/json");
+    }
+
+    // Expect Authorization: Bearer <registration_access_token>
+    var authHeader = request.Headers.Authorization.ToString();
+    if (string.IsNullOrEmpty(authHeader) || !authHeader.StartsWith("Bearer "))
+    {
+        return Results.Json(new
+        {
+            error = "invalid_request",
+            error_description = "Missing or invalid Authorization header"
+        }, statusCode: 401, contentType: "application/json");
+    }
+
+    string token = authHeader.ToString().StartsWith("Bearer ") ? authHeader.Substring("Bearer ".Length).Trim() : authHeader;
+
+    if (token != client.RegistrationAccessToken)
+    {
+        return Results.Json(new
+        {
+            error = "invalid_token",
+            error_description = "Invalid registration access token"
+        }, statusCode: 401, contentType: "application/json");
+    }
+
+    var resp = new RegisterResponse
+    {
+        client_id = client.ClientId,
+        client_secret = client.ClientSecret,
+        client_id_issued_at = client.ClientIdIssuedAt,
+        client_secret_expires_at = "0", // never expires
+        redirect_uris = client.RedirectUris,
+        grant_types = client.GrantTypes,
+        registration_client_uri = client.RegistrationClientUri,
+        registration_access_token = client.RegistrationAccessToken,
+        token_endpoint_auth_method = client.TokenEndpointAuthMethod,
+        response_types = client.ResponseTypes,
+        scope = client.Scope
+    };
+    
+    return Results.Ok(resp);
+});
+
 // Authorize endpoint
 app.MapGet("/authorize", (
     [FromQuery] string client_id,
@@ -100,7 +250,7 @@ app.MapGet("/authorize", (
     [FromQuery] string? resource, HttpRequest request) =>
 {
     // Validate client
-    // if (!_clients.TryGetValue(client_id, out var client))
+    // if (!_registeredClients.TryGetValue(client_id, out var client))
     // {
     //     return Results.BadRequest(new OAuthErrorResponse
     //     {

@@ -9,3 +9,40 @@ Get https://0.0.0.0:7029/authorize?client_id=123&redirect_uri=https://0.0.0.0:70
 
 ### deployed app
 GET https://src.ambitiousdesert-52c4453d.eastus2.azurecontainerapps.io/authorize?client_id=123&redirect_uri=https://src.ambitiousdesert-52c4453d.eastus2.azurecontainerapps.io/dummyRedirect&response_type=code&code_challenge_method=S256&code_challenge=test&resource=http://test.com
+
+### 
+# @name registerClient
+POST http://0.0.0.0:8080/register
+Content-Type: application/json
+Accept: application/json
+Authorization: Bearer ey23f2.adfj230.af32-developer321
+Host: server.example.com
+
+{
+   "redirect_uris":[
+      "https://client.example.org/callback",
+      "https://client.example.org/callback2"
+   ],
+   "client_name":"My Example Client",
+   "client_name#ja-Jpan-JP":"\u30AF\u30E9\u30A4\u30A2\u30F3\u30C8\u540D",
+   "token_endpoint_auth_method":"client_secret_basic",
+   "policy_uri":"https://client.example.org/policy.html",
+   "jwks":{
+      "keys":[
+         {
+            "e":"AQAB",
+            "n":"nj3YJwsLUFl9BmpAbkOswCNVx17Eh9wMO-_AReZwBqfaWFcfGHrZXsIV2VMCNVNU8Tpb4obUaSXcRcQ-VMsfQPJm9IzgtRdAY8NN8Xb7PEcYyklBjvTtuPbpzIaqyiUepzUXNDFuAOOkrIol3WmflPUUgMKULBN0EUd1fpOD70pRM0rlp_gg_WNUKoW1V-3keYUJoXH9NztEDm_D2MQXj9eGOJJ8yPgGL8PAZMLe2R7jb9TxOCPDED7tY_TU4nFPlxptw59A42mldEmViXsKQt60s1SLboazxFKveqXC_jpLUt22OC6GUG63p-REw-ZOr3r845z50wMuzifQrMI9bQ",
+            "kty":"RSA"
+         }
+      ]
+   },
+   "example_extension_parameter":"example_value"
+}
+### 
+
+### Test GetClient
+GET http://0.0.0.0:8080/register/{{registerClient.response.body.client_id}}
+Accept: application/json
+Authorization: Bearer {{registerClient.response.body.registration_access_token}}
+
+### 
