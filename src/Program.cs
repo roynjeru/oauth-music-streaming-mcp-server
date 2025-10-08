@@ -185,8 +185,6 @@ app.MapGet("/authorize", (
         SpofityRedirectUri = spotifyRedirectUri
     };
 
-    
-
     var spotifyRedirect = $"{spotifyAuthUrl}?response_type=code&client_id={spotifyClientId}&scope={Uri.EscapeDataString(spotifyScopes)}&redirect_uri={Uri.EscapeDataString(spotifyRedirectUri)}&code_challenge_method=S256&code_challenge={spotifyChallenge}&state={spotifyServerState}";
 
     app.Logger.LogInformation("Redirecting to Spotify: {spotifyRedirect}", spotifyRedirect);
@@ -220,6 +218,8 @@ app.MapGet("/spotify-callback", async (
 
     var spotifyTokenResponse = await httpService.GetSpotifyAccessToken(tokenRequest);
 
+    app.Logger.LogInformation("Received Spotify token response: {spotifyTokenResponse}", spotifyTokenResponse.ToString());
+
     // return to client with MCP Server auth code 
     return Results.Redirect(clientRedirectUri);
 });
@@ -230,8 +230,7 @@ app.MapGet("/dummyRedirect", (
     [FromQuery] string? state
 ) =>
 {
-    var mcpAuthCode = _mcpCodeMap[code];
-    var authCodeInfo = _authCodes[mcpAuthCode];
+    var authCodeInfo = _authCodes[code];
     
     return Results.Ok($"Test successfull with code: {code}, state: {state}, redirect_uri: {authCodeInfo.SpofityRedirectUri}, code_verifier: {authCodeInfo.SpotifyCodeVerifier}");
 });

@@ -19,5 +19,10 @@ namespace src.Models
 
         [JsonPropertyName("scope")]
         public string? Scope { get; init; }
+
+        public override string ToString()
+        {
+            return $"AccessToken: {AccessToken}, TokenType: {TokenType}, ExpiresIn: {ExpiresIn}, RefreshToken: {RefreshToken}, Scope: {Scope}";
+        }
     }
 }
