@@ -202,7 +202,7 @@ app.MapGet("/spotify-callback", async (
     var mcpCode = _mcpCodeMap[state];
     AuthorizationCodeInfo authCodeInfo = _authCodes[mcpCode];
     authCodeInfo.SpotifyAuthCode = code; // update the auth code info with the spotify code
-    _authCodes[mcpCode] = authCodeInfo;
+    
 
     var clientRedirectUri = authCodeInfo.ClientRedirectUri;
 
@@ -217,8 +217,12 @@ app.MapGet("/spotify-callback", async (
     var httpService = app.Services.GetRequiredService<HttpService>();
 
     var spotifyTokenResponse = await httpService.GetSpotifyAccessToken(tokenRequest);
+    authCodeInfo.SpotifyTokenResponse = spotifyTokenResponse;
+    _authCodes[mcpCode] = authCodeInfo;
 
     app.Logger.LogInformation("Received Spotify token response: {spotifyTokenResponse}", spotifyTokenResponse.ToString());
+
+    app.Logger.LogInformation("Authorization code info: {authCodeInfo}", authCodeInfo.ToString());
 
     // return to client with MCP Server auth code 
     return Results.Redirect(clientRedirectUri);
@@ -232,7 +236,7 @@ app.MapGet("/dummyRedirect", (
 {
     var authCodeInfo = _authCodes[code];
     
-    return Results.Ok($"Test successfull with code: {code}, state: {state}, redirect_uri: {authCodeInfo.SpofityRedirectUri}, code_verifier: {authCodeInfo.SpotifyCodeVerifier}");
+    return Results.Ok($"Test successfull with auth code info: {authCodeInfo}");
 });
 
 // JWKS endpoint to expose the public key

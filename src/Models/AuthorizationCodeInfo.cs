@@ -41,4 +41,11 @@ internal sealed class AuthorizationCodeInfo
     public string SpotifyState { get; init; } = string.Empty;
 
     public string SpotifyAuthCode { get; set; } = string.Empty;
+
+    public SpotifyTokenResponse? SpotifyTokenResponse { get; set; }
+
+    public override string ToString()
+    {
+        return $"ClientId: {ClientId}, ClientRedirectUri: {ClientRedirectUri}, SpofityRedirectUri: {SpofityRedirectUri}, CodeChallenge: {CodeChallenge}, Scopes: [{string.Join(", ", Scope)}], Resource: {Resource}, SpotifyCodeVerifier: {SpotifyCodeVerifier}, ClientState: {ClientState}, SpotifyState: {SpotifyState}, SpotifyAuthCode: {SpotifyAuthCode}, SpotifyTokenResponse: {SpotifyTokenResponse}";
+    }
 }
