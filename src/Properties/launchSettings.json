@@ -1,7 +1,7 @@
 ﻿{
   "$schema": "https://json.schemastore.org/launchsettings.json",
   "profiles": {
-    "http": {
+    "https": {
       "commandName": "Project",
       "dotnetRunMessages": true,
       "launchBrowser": false,
@@ -9,7 +9,7 @@
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
         "WEBSITE_PORT": "7029",
-        "ASPNETCORE_URLS": "http://0.0.0.0:8080",
+        "ASPNETCORE_URLS": "https://0.0.0.0:7098;http://0.0.0.0:8080",
         "APPLICATIONINSIGHTS_CONNECTION_STRING": ""
       }
     }

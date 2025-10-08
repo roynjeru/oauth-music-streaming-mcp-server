@@ -1,10 +1,11 @@
-@src_HostAddress = http://localhost:5296
+@httpAddress = http://0.0.0.0:8080
+@httpsAddress = https://0.0.0.0:7098
 
-GET {{src_HostAddress}}/
+GET {{httpAddress}}/
 Accept: application/json
 
-###
-Get https://0.0.0.0:7029/authorize?client_id=123&redirect_uri=https://0.0.0.0:7029/test&response_type=code&code_challenge_method=S256&code_challenge=test&resource=http://test.com
+# @name authorizeLocal
+Get https://0.0.0.0:7098/authorize?client_id=123&redirect_uri=https://0.0.0.0:7098/dummyRedirect&response_type=code&code_challenge_method=S256&code_challenge=test&resource=http://test.com
 
 
 ### deployed app
@@ -12,7 +13,7 @@ GET https://src.ambitiousdesert-52c4453d.eastus2.azurecontainerapps.io/authorize
 
 ### 
 # @name registerClient
-POST http://0.0.0.0:8080/register
+POST {{httpsAddress}}/register
 Content-Type: application/json
 Accept: application/json
 Authorization: Bearer ey23f2.adfj230.af32-developer321
@@ -41,7 +42,7 @@ Host: server.example.com
 ### 
 
 ### Test GetClient
-GET http://0.0.0.0:8080/register/{{registerClient.response.body.client_id}}
+GET {{httpsAddress}}/register/{{registerClient.response.body.client_id}}
 Accept: application/json
 Authorization: Bearer {{registerClient.response.body.registration_access_token}}
 
