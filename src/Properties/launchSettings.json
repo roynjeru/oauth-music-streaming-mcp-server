@@ -10,7 +10,10 @@
         "ASPNETCORE_ENVIRONMENT": "Development",
         "WEBSITE_PORT": "7029",
         "ASPNETCORE_URLS": "https://0.0.0.0:7098;http://0.0.0.0:8080",
-        "APPLICATIONINSIGHTS_CONNECTION_STRING": ""
+        "APPLICATIONINSIGHTS_CONNECTION_STRING": "",
+        "jwt-kid": "ec4b6afe-7757-40d9-8140-6240701168d3",
+        "jwt-pemPrivateKey": "", 
+        "env-issuer": "https://0.0.0.0:7098"
       }
     }
   }
