@@ -5,7 +5,7 @@ namespace src.Models;
 /// <summary>
 /// Represents the token response for OAuth flow.
 /// </summary>
-internal sealed class TokenResponse
+public class TokenResponse
 {
     /// <summary>
     /// Gets or sets the access token.

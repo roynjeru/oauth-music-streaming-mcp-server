@@ -1,15 +1,13 @@
 using Azure.Monitor.OpenTelemetry.AspNetCore;
 using System.Collections.Concurrent;
-using System.Reflection;
 using System.Security.Cryptography;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.IdentityModel.Tokens;
 using src.Helpers;
 using src.Models;
 using src.Services;
-using Microsoft.AspNetCore.Http.HttpResults;
-using System.IdentityModel.Tokens.Jwt;
+using src.Singletons;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -21,7 +19,18 @@ var spotifyScopes = "user-read-private user-read-email streaming user-read-playb
 var spotifyClientId = "04e740f554cc46469e3645a37b861a75";
 var spotifyRedirectUri = "http://127.0.0.1:8080/spotify-callback";
 
-var kid = builder.Configuration["jwt:Kid"];
+var kid = builder.Configuration["jwt-kid"];
+var pemPrivateKey = builder.Configuration["jwt-pemPrivateKey"];
+
+var issuer = builder.Configuration["env-issuer"];
+var audience = "my-mcp-server";
+
+var keys = new KeyMaterial(pemPrivateKey, kid);
+var issuerService = new RsaJwtIssuer(issuer, audience, keys);
+
+builder.Services.AddSingleton(keys);
+builder.Services.AddSingleton(issuerService);
+
 
 // Port 5000 is used by tests and port 7071 is used by the ProtectedMcpServer sample
 // string[] ValidResources = ["http://localhost:5000/", "http://localhost:7071/"];
@@ -48,10 +57,12 @@ builder.Services.AddOpenTelemetry().UseAzureMonitor();
 
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
+builder.Services.AddAntiforgery();
 
 var app = builder.Build();
 
 app.UseRouting();
+app.UseAntiforgery();
 app.UseEndpoints(_ => { });
 
 // The MCP spec tells the client to use /.well-known/oauth-authorization-server but AddJwtBearer looks for
@@ -395,31 +406,68 @@ app.MapGet("/dummyRedirect", (
 // JWKS endpoint to expose the public key
 app.MapGet("/.well-known/jwks.json", () =>
 {
-    var parameters = _rsa.ExportParameters(false);
-
-    // Convert parameters to base64url encoding
-    var e = WebEncoders.Base64UrlEncode(parameters.Exponent ?? Array.Empty<byte>());
-    var n = WebEncoders.Base64UrlEncode(parameters.Modulus ?? Array.Empty<byte>());
-
-    var jwks = new JsonWebKeySet
+    var jwks = keys.Jwks; // contains: kty=RSA, use=sig, kid, alg=RS256, n, e
+    var response = new
     {
-        Keys = [
-            new JsonWebKey
-            {
-                KeyType = "RSA",
-                Use = "sig",
-                KeyId = _keyID,
-                Algorithm = "RS256",
-                Exponent = e,
-                Modulus = n
-            }
-        ]
+        keys = jwks.Keys.Select(k => new
+        {
+            kty = k.Kty,
+            use = k.Use,
+            kid = k.Kid,
+            alg = k.Alg,
+            n = k.N,
+            e = k.E
+        })
     };
 
-    return Results.Ok(jwks);
+    // Cache for a short period to let validators refresh
+    return Results.Json(response,
+        statusCode: 200,
+        contentType: "application/json");
 });
 
 app.MapGet("/probe", () => Results.Ok("Server is running"));
+
+// mint tokens
+// Token endpoint for MCP clients to exchange an MCP code for an access token.
+app.MapPost("/token", ([FromBody] TokenRequest requestBody, RsaJwtIssuer issuerSvc) =>
+{
+    if (requestBody == null || requestBody.grant_type != "authorization_code")
+    {
+        return Results.Json(new
+        {
+            error = "unsupported_grant_type",
+            error_description = "Only authorization_code grant_type is supported"
+        }, statusCode: 400, contentType: "application/json");
+    }
+
+    // validate the mcpAuthCode from request exits in the store
+    if (string.IsNullOrEmpty(requestBody.code) || !_authCodes.TryGetValue(requestBody.code, out var authCodeInfo))
+    {
+        return Results.Json(new
+        {
+            error = "invalid_grant",
+            error_description = "Authorization code is invalid or has expired"
+        }, statusCode: 400, contentType: "application/json");
+    }
+
+    // validate redirect_uri
+
+    // validate PKCE 
+
+    // validate code_verifier and code_challenge
+
+    // [TODO] 
+    // Generates encrypted session key for MCP API access
+    // Caches the access token with session key mapping
+    // Returns encrypted session key to MCP client
+
+    // mint token 
+    // [TODO]: add additional claims and expiration/lifetime based on spotify token info
+    var jwt = issuerSvc.Mint("user1");
+
+    return Results.Ok(new { access_token = jwt, token_type = "Bearer", expires_in = 900 });
+});
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
