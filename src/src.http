@@ -1,6 +1,8 @@
 @httpAddress = http://0.0.0.0:8080
 @httpsAddress = https://0.0.0.0:7098
+@deployedAddress = https://src.ambitiousdesert-52c4453d.eastus2.azurecontainerapps.io
 
+### 
 GET {{httpAddress}}/
 Accept: application/json
 
@@ -13,11 +15,9 @@ GET https://src.ambitiousdesert-52c4453d.eastus2.azurecontainerapps.io/authorize
 
 ### 
 # @name registerClient
-POST {{httpsAddress}}/register
+POST {{deployedAddress}}/register
 Content-Type: application/json
 Accept: application/json
-Authorization: Bearer ey23f2.adfj230.af32-developer321
-Host: server.example.com
 
 {
    "redirect_uris":[
@@ -42,8 +42,9 @@ Host: server.example.com
 ### 
 
 ### Test GetClient
-GET {{httpsAddress}}/register/{{registerClient.response.body.client_id}}
+GET {{deployedAddress}}/register/{{registerClient.response.body.client_id}}
 Accept: application/json
 Authorization: Bearer {{registerClient.response.body.registration_access_token}}
+Connection: keep-alive
 
 ### 

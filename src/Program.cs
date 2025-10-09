@@ -9,6 +9,7 @@ using src.Helpers;
 using src.Models;
 using src.Services;
 using Microsoft.AspNetCore.Http.HttpResults;
+using System.IdentityModel.Tokens.Jwt;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -19,6 +20,8 @@ var spotifyAuthUrl = "https://accounts.spotify.com/authorize";
 var spotifyScopes = "user-read-private user-read-email streaming user-read-playback-state user-modify-playback-state";
 var spotifyClientId = "04e740f554cc46469e3645a37b861a75";
 var spotifyRedirectUri = "http://127.0.0.1:8080/spotify-callback";
+
+var kid = builder.Configuration["jwt:Kid"];
 
 // Port 5000 is used by tests and port 7071 is used by the ProtectedMcpServer sample
 // string[] ValidResources = ["http://localhost:5000/", "http://localhost:7071/"];
