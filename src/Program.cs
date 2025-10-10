@@ -155,6 +155,8 @@ app.MapPost("/register", ([FromBody] RegisterRequest? regReqBody, HttpRequest re
         }, statusCode: 400, contentType: "application/json");
     }
 
+    app.Logger.LogInformation("RegisterRequest body from client: {regReqBody}", regReqBody.ToString());
+
     if (regReqBody.redirect_uris == null || regReqBody.redirect_uris.Length == 0)
     {
         return Results.Json(new
@@ -212,7 +214,7 @@ app.MapPost("/register", ([FromBody] RegisterRequest? regReqBody, HttpRequest re
         ClientSecret = clientSecret,
         RedirectUris = regReqBody.redirect_uris,
         ClientName = regReqBody.client_name,
-        TokenEndpointAuthMethod = clientAuthMethod,
+        TokenEndpointAuthMethod = "none",
         GrantTypes = regReqBody.grant_types ?? new string[] { "authorization_code" },
         ResponseTypes = regReqBody.response_types ?? new string[] { "code" },
         Scope = regReqBody.scope,

@@ -22,5 +22,10 @@ namespace src.Models
 
         [JsonPropertyName("scope")]
         public string? scope { get; set; }
+
+        public override string ToString()
+        {
+            return System.Text.Json.JsonSerializer.Serialize(this);
+        }
     }
 }
