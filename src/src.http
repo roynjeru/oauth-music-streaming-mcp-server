@@ -10,13 +10,17 @@ Accept: application/json
 # @name authorizeLocal
 Get https://0.0.0.0:7098/authorize?client_id=BYNoOlaf3vqx868Z8tJWRTu5&redirect_uri=https://0.0.0.0:7098/dummyRedirect&response_type=code&code_challenge_method=S256&code_challenge=test&resource=http://test.com
 
+###
+# @name authorizeDeployed
+Get https://src.ambitiousdesert-52c4453d.eastus2.azurecontainerapps.io/authorize?client_id=bFzL3b2xYJNOE9Tuj4vx0UoZ&redirect_uri=https://src.ambitiousdesert-52c4453d.eastus2.azurecontainerapps.io/dummyRedirect&response_type=code&code_challenge_method=S256&code_challenge=test&resource=http://test.com
+
 
 ### deployed app
 GET https://src.ambitiousdesert-52c4453d.eastus2.azurecontainerapps.io/authorize?client_id=123&redirect_uri=https://src.ambitiousdesert-52c4453d.eastus2.azurecontainerapps.io/dummyRedirect&response_type=code&code_challenge_method=S256&code_challenge=test&resource=http://test.com
 
 ### 
 # @name registerClient
-POST {{httpAddress}}/register
+POST {{deployedAddress}}/register
 Content-Type: application/json
 Accept: application/json
 
@@ -51,12 +55,12 @@ Connection: keep-alive
 
 ### 
 # @name tokenLocal
-POST {{httpAddress}}/token
+POST {{deployedAddress}}/token
 Content-Type: application/json
 Accept: application/json
 
 {
-    "code": "Rhj9adPegKIlod9i-j3tWmC9EOIsKxooUQDkFgTspIo",
+    "code": "PLmQD38_Eb-LAC7YyefaLj2hx9uxks6Qqs-FsKDOp5E",
     "code_verifier": "test",
     "grant_type": "authorization_code"
 }

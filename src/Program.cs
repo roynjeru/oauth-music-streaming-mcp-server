@@ -8,6 +8,7 @@ using src.Helpers;
 using src.Models;
 using src.Services;
 using src.Singletons;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -22,11 +23,11 @@ var spotifyRedirectUri = "http://127.0.0.1:8080/spotify-callback";
 var kid = builder.Configuration["jwt-kid"];
 var pemPrivateKey = builder.Configuration["jwt-pemPrivateKey"];
 
-var issuer = builder.Configuration["env-issuer"];
+var env_issuer = builder.Configuration["env-issuer"];
 var audience = "my-mcp-server";
 
 var keys = new KeyMaterial(pemPrivateKey, kid);
-var issuerService = new RsaJwtIssuer(issuer, audience, keys);
+var issuerService = new RsaJwtIssuer(env_issuer, audience, keys);
 
 builder.Services.AddSingleton(keys);
 builder.Services.AddSingleton(issuerService);
@@ -65,43 +66,83 @@ app.UseRouting();
 app.UseAntiforgery();
 app.UseEndpoints(_ => { });
 
-// The MCP spec tells the client to use /.well-known/oauth-authorization-server but AddJwtBearer looks for
-// /.well-known/openid-configuration by default. To make things easier, we support both with the same response
-// which seems to be common. Ex. https://github.com/keycloak/keycloak/pull/29628
-//
-// The requirements for these endpoints are at https://www.rfc-editor.org/rfc/rfc8414 and
-// https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata respectively.
-// They do differ, but it's close enough at least for our current testing to use the same response for both.
-// See https://gist.github.com/localden/26d8bcf641703c08a5d8741aa9c3336c
-string[] metadataEndpoints = ["/.well-known/oauth-authorization-server", "/.well-known/openid-configuration"];
-foreach (var metadataEndpoint in metadataEndpoints)
+// OAuth 2.0 Authorization Server Metadata (RFC 8414)
+app.MapGet("/.well-known/oauth-authorization-server", (HttpContext context, HttpRequest request) =>
 {
-    // OAuth 2.0 Authorization Server Metadata (RFC 8414)
-    app.MapGet(metadataEndpoint, (HttpContext context, HttpRequest request) =>
+    var requestScheme = "https";
+    string requestUrl = $"{requestScheme}://{request.Host}";
+    var obj = new { context, request };
+    var metadata = new OAuthServerMetadata
     {
-        string requestUrl = $"{request.Scheme}://{request.Host}";
-        var obj = new { context, request };
-        var metadata = new OAuthServerMetadata
-        {
-            Issuer = requestUrl, // env_url,
-            AuthorizationEndpoint = $"{requestUrl}/authorize",
-            TokenEndpoint = $"{requestUrl}/token",
-            JwksUri = $"{requestUrl}/.well-known/jwks.json",
-            ResponseTypesSupported = ["code"],
-            SubjectTypesSupported = ["public"],
-            IdTokenSigningAlgValuesSupported = ["RS256"],
-            ScopesSupported = ["openid", "profile", "email", "mcp:tools"],
-            TokenEndpointAuthMethodsSupported = ["client_secret_post"],
-            ClaimsSupported = ["sub", "iss", "name", "email", "aud"],
-            CodeChallengeMethodsSupported = ["S256"],
-            GrantTypesSupported = ["authorization_code", "refresh_token"],
-            IntrospectionEndpoint = $"{requestUrl}/introspect",
-            RegistrationEndpoint = $"{requestUrl}/register"
-        };
+        Issuer = requestUrl, // env_url,
+        AuthorizationEndpoint = $"{requestUrl}/authorize",
+        TokenEndpoint = $"{requestUrl}/token",
+        JwksUri = $"{requestUrl}/.well-known/jwks.json",
+        ResponseTypesSupported = ["code"],
+        SubjectTypesSupported = ["public"],
+        IdTokenSigningAlgValuesSupported = ["RS256"],
+        ScopesSupported = ["openid", "profile", "email", "mcp:tools"],
+        TokenEndpointAuthMethodsSupported = ["none"], // no cient auth, require code_verifier
+        ClaimsSupported = ["sub", "iss", "name", "email", "aud"],
+        CodeChallengeMethodsSupported = ["S256"],
+        GrantTypesSupported = ["authorization_code", "refresh_token"],
+        RegistrationEndpoint = $"{requestUrl}/register"
+    };
 
-        return Results.Ok(metadata);
+    return Results.Ok(metadata);
+});
+
+// JWKS endpoint to expose the public key
+app.MapGet("/.well-known/jwks.json", () =>
+{
+    var jwks = keys.Jwks; // contains: kty=RSA, use=sig, kid, alg=RS256, n, e
+    var response = new
+    {
+        keys = jwks.Keys.Select(k => new
+        {
+            kty = k.Kty,
+            use = k.Use,
+            kid = k.Kid,
+            alg = k.Alg,
+            n = k.N,
+            e = k.E
+        })
+    };
+
+    // Cache for a short period to let validators refresh
+    return Results.Json(response,
+        statusCode: 200,
+        contentType: "application/json");
+});
+
+// ---- OIDC Discovery (OpenID Provider Metadata) ----
+app.MapGet("/.well-known/openid-configuration", (HttpContext http) =>
+{
+    var doc = new OpenIdDiscovery
+    {
+        issuer = env_issuer,
+        jwks_uri = $"{env_issuer}/.well-known/jwks.json", // TODO: from env
+        authorization_endpoint = $"{env_issuer}/authorize", // TODO: from env
+        token_endpoint = $"{env_issuer}/token", // TODO: from env
+        response_types_supported = ["code"],
+        response_modes_supported = ["query", "fragment", "form_post"],
+        grant_types_supported = ["authorization_code", "refresh_token"],
+        code_challenge_methods_supported = ["S256"],
+        subject_types_supported = ["public"],
+        id_token_signing_alg_values_supported = ["RS256"],
+        token_endpoint_auth_methods_supported = ["none"], // no cient auth, require code_verifier
+        scopes_supported = ["openid", "profile", "email", "mcp:tools"],
+        claims_supported = ["sub", "iss", "name", "email", "aud"]
+    };
+
+    // Cache for a few minutes so clients can refresh keys/metadata
+    http.Response.Headers.CacheControl = "public, max-age=300";
+
+    return Results.Json(doc, new System.Text.Json.JsonSerializerOptions
+    {
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     });
-}
+});
 
 app.MapPost("/register", ([FromBody] RegisterRequest? regReqBody, HttpRequest request) =>
 {
@@ -403,29 +444,6 @@ app.MapGet("/dummyRedirect", (
     return Results.Ok($"Test successfull with auth code info: {authCodeInfo}");
 });
 
-// JWKS endpoint to expose the public key
-app.MapGet("/.well-known/jwks.json", () =>
-{
-    var jwks = keys.Jwks; // contains: kty=RSA, use=sig, kid, alg=RS256, n, e
-    var response = new
-    {
-        keys = jwks.Keys.Select(k => new
-        {
-            kty = k.Kty,
-            use = k.Use,
-            kid = k.Kid,
-            alg = k.Alg,
-            n = k.N,
-            e = k.E
-        })
-    };
-
-    // Cache for a short period to let validators refresh
-    return Results.Json(response,
-        statusCode: 200,
-        contentType: "application/json");
-});
-
 app.MapGet("/probe", () => Results.Ok("Server is running"));
 
 // mint tokens
@@ -450,6 +468,8 @@ app.MapPost("/token", ([FromBody] TokenRequest requestBody, RsaJwtIssuer issuerS
             error_description = "Authorization code is invalid or has expired"
         }, statusCode: 400, contentType: "application/json");
     }
+
+    app.Logger.LogInformation("token requestBody: {requestBody}", requestBody.ToString());
 
     // validate redirect_uri
 

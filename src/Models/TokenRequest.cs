@@ -10,5 +10,10 @@ namespace src.Models
         public string? client_secret { get; set; }
         public string? refresh_token { get; set; }
         public string? scope { get; set; }
+
+        public override string ToString()
+        {
+            return System.Text.Json.JsonSerializer.Serialize(this);
+        }
     }
 }
