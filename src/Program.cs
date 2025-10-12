@@ -197,12 +197,6 @@ app.MapPost("/register", ([FromBody] RegisterRequest? regReqBody, HttpRequest re
 
     var clientId = HelperMethods.generateRandomString(24);
 
-    string? clientSecret = null;
-
-    if (clientAuthMethod == "client_secret_basic" || clientAuthMethod == "client_secret_post")
-    {
-        clientSecret = HelperMethods.generateRandomString(40);
-    }
     // 2 validation errors for RegisterOAuthClientResponse client_secret Input should be a valid string [type=string_type, input_value=None, input_type=NoneType] For further information visit https://errors.pydantic.dev/2.11/v/string_type scope Input should be a valid string [type=string_type, input_value=None, input_type=NoneType] For further information visit https://errors.pydantic.dev/2.11/v/string_type
 
     var registrationAccessToken = HelperMethods.generateRandomString(40);
@@ -228,9 +222,7 @@ app.MapPost("/register", ([FromBody] RegisterRequest? regReqBody, HttpRequest re
     var resp = new RegisterResponse
     {
         client_id = registered.ClientId,
-        client_secret = registered.ClientSecret,
         client_id_issued_at = registered.ClientIdIssuedAt,
-        client_secret_expires_at = "0", // never expires
         redirect_uris = registered.RedirectUris,
         grant_types = registered.GrantTypes,
         registration_client_uri = registered.RegistrationClientUri,
@@ -276,6 +268,19 @@ app.MapGet("/register/{clientId}", (
             error_description = "Invalid registration access token"
         }, statusCode: 401, contentType: "application/json");
     }
+
+    var resp = new RegisterResponse
+    {
+        client_id = client.ClientId,
+        client_id_issued_at = client.ClientIdIssuedAt,
+        redirect_uris = client.RedirectUris,
+        grant_types = client.GrantTypes,
+        registration_client_uri = client.RegistrationClientUri,
+        registration_access_token = client.RegistrationAccessToken,
+        token_endpoint_auth_method = client.TokenEndpointAuthMethod,
+        response_types = client.ResponseTypes,
+        scope = client.Scope
+    };
     
     return Results.Ok(client);
 });

@@ -17,12 +17,15 @@ Get https://src.ambitiousdesert-52c4453d.eastus2.azurecontainerapps.io/authorize
 ### 
 ### 
 # @name registerClient
-POST {{deployedAddress}}/register
+POST {{httpsAddress}}/register
 Content-Type: application/json
 Accept: application/json
 
-{"redirect_uris":["https://chatgpt.com/connector_platform_oauth_redirect"],"client_name":"ChatGPT","token_endpoint_auth_method":"none","grant_types":["authorization_code","refresh_token"],"response_types":["code"],"scope":null}
-
+{
+    "redirect_uris":["https://chatgpt.com/connector_platform_oauth_redirect"],
+    "client_name":"ChatGPT","token_endpoint_auth_method":"none","grant_types":["authorization_code","refresh_token"],
+    "response_types":["code"],"scope":null
+}
 
 ### 
 

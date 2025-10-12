@@ -1,9 +1,10 @@
+using System.Text.Json.Serialization;
+
 namespace src.Models
 {
     public class RegisteredClient
     {
         public string? ClientId { get; set; }
-        public string? ClientSecret { get; set; }
         public string[]? RedirectUris { get; set; }
         public string? ClientName { get; set; }
         public string? TokenEndpointAuthMethod { get; set; }

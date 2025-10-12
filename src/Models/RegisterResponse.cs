@@ -7,9 +7,6 @@ namespace src.Models
         [JsonPropertyName("client_id")]
         public string? client_id { get; set; }
 
-        [JsonPropertyName("client_secret")]
-        public string? client_secret { get; set; }
-
         [JsonPropertyName("client_id_issued_at")]
         public long client_id_issued_at { get; set; }
 
@@ -33,8 +30,5 @@ namespace src.Models
 
         [JsonPropertyName("scope")]
         public string? scope { get; set; }
-
-        [JsonPropertyName("client_secret_expires_at")]
-        public string? client_secret_expires_at { get; set; }
     }    
 }
