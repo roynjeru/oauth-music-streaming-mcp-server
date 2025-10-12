@@ -12,7 +12,7 @@ Get https://0.0.0.0:7098/authorize?client_id=BYNoOlaf3vqx868Z8tJWRTu5&redirect_u
 
 ###
 # @name authorizeDeployed
-Get https://src.ambitiousdesert-52c4453d.eastus2.azurecontainerapps.io/authorize?client_id=o9ioTAXQtHZtOXqigIBX0PKV&redirect_uri=https://src.ambitiousdesert-52c4453d.eastus2.azurecontainerapps.io/dummyRedirect&response_type=code&code_challenge_method=S256&code_challenge=test&resource=http://test.com
+Get https://src.ambitiousdesert-52c4453d.eastus2.azurecontainerapps.io/authorize?client_id=wlJhjcl2TJm2k7FGzsVp7O4r&redirect_uri=https://src.ambitiousdesert-52c4453d.eastus2.azurecontainerapps.io/dummyRedirect&response_type=code&code_challenge_method=S256&code_challenge=test&resource=http://test.com
 
 ### 
 ### 
@@ -22,8 +22,10 @@ Content-Type: application/json
 Accept: application/json
 
 {
-    "redirect_uris":["https://chatgpt.com/connector_platform_oauth_redirect"],
-    "client_name":"ChatGPT","token_endpoint_auth_method":"none","grant_types":["authorization_code","refresh_token"],
+    "redirect_uris":["https://some-mcp-client.com/connector_platform_oauth_redirect"],
+    "client_name":"localLLM",
+    "token_endpoint_auth_method":"none",
+    "grant_types":["authorization_code","refresh_token"],
     "response_types":["code"],"scope":null
 }
 
@@ -37,12 +39,12 @@ Connection: keep-alive
 ###
 
 ### 
-# @name tokenLocal
-POST {{httpsAddress}}/token
+# @name token
+POST {{deployedAddress}}/token
 Content-Type: application/x-www-form-urlencoded
 Accept: application/json
 
-code=-P2ICdY3HfWhp81c5xR0mQdIC6Bg_6Hd0_s1DBS1_lc
+code=-jyQxW7Ux7fy-QSC8BMPRB9hT7r3vI7NdLUy3218OPbk
 &code_verifier=test
 &grant_type=authorization_code
 

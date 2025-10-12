@@ -359,8 +359,10 @@ app.MapGet("/authorize", (
     var redirectUrl = $"{redirect_uri}?code={mcpAuthCode}";
     if (!string.IsNullOrEmpty(state))
     {
-        redirectUrl += $"&state={Uri.EscapeDataString(state)}";
+        state = HelperMethods.generateRandomString(32);
     }
+    redirectUrl += $"&state={Uri.EscapeDataString(state)}";
+
 
     if (!request.Host.ToString().Contains("localhost") && !request.Host.ToString().Contains("127.0.0.1"))
     {
@@ -441,6 +443,8 @@ app.MapGet("/probe", () => Results.Ok("Server is running"));
 // Token endpoint for MCP clients to exchange an MCP code for an access token.
 app.MapPost("/token", ([FromForm] TokenRequest requestBody, RsaJwtIssuer issuerSvc) =>
 {
+    app.Logger.LogInformation("token requestBody: {requestBody}", requestBody.ToString());
+
     if (requestBody == null || requestBody.grant_type != "authorization_code")
     {
         return Results.Json(new
@@ -459,8 +463,6 @@ app.MapPost("/token", ([FromForm] TokenRequest requestBody, RsaJwtIssuer issuerS
             error_description = "Authorization code is invalid or has expired"
         }, statusCode: 400, contentType: "application/json");
     }
-
-    app.Logger.LogInformation("token requestBody: {requestBody}", requestBody.ToString());
 
     // validate redirect_uri
 
