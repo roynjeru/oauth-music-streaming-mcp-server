@@ -357,7 +357,7 @@ app.MapGet("/authorize", (
 
     // Redirect back to client with the code
     var redirectUrl = $"{redirect_uri}?code={mcpAuthCode}";
-    if (!string.IsNullOrEmpty(state))
+    if (string.IsNullOrEmpty(state))
     {
         state = HelperMethods.generateRandomString(32);
     }
