@@ -210,7 +210,7 @@ app.MapPost("/register", ([FromBody] RegisterRequest? regReqBody, HttpRequest re
         TokenEndpointAuthMethod = "none",
         GrantTypes = regReqBody.grant_types ?? new string[] { "authorization_code" },
         ResponseTypes = regReqBody.response_types ?? new string[] { "code" },
-        Scope = regReqBody.scope,
+        Scope = regReqBody.scope + "openid profile email mcp:tools",
         RegistrationAccessToken = registrationAccessToken,
         ClientIdIssuedAt = issuedAt,
         RegistrationClientUri = registrationClientUri
@@ -478,7 +478,8 @@ app.MapPost("/token", ([FromForm] TokenRequest requestBody, RsaJwtIssuer issuerS
     var jwt = issuerSvc.Mint("user1");
 
     return Results.Ok(new { access_token = jwt, token_type = "Bearer", expires_in = 900 });
-});
+})
+.DisableAntiforgery();
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
