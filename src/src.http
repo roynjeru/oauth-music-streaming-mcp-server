@@ -12,38 +12,18 @@ Get https://0.0.0.0:7098/authorize?client_id=BYNoOlaf3vqx868Z8tJWRTu5&redirect_u
 
 ###
 # @name authorizeDeployed
-Get https://src.ambitiousdesert-52c4453d.eastus2.azurecontainerapps.io/authorize?client_id=bFzL3b2xYJNOE9Tuj4vx0UoZ&redirect_uri=https://src.ambitiousdesert-52c4453d.eastus2.azurecontainerapps.io/dummyRedirect&response_type=code&code_challenge_method=S256&code_challenge=test&resource=http://test.com
+Get https://src.ambitiousdesert-52c4453d.eastus2.azurecontainerapps.io/authorize?client_id=aO7hdQ700YCvEZ5TTWwRDn03&redirect_uri=https://src.ambitiousdesert-52c4453d.eastus2.azurecontainerapps.io/dummyRedirect&response_type=code&code_challenge_method=S256&code_challenge=test&resource=http://test.com
 
-
-### deployed app
-GET https://src.ambitiousdesert-52c4453d.eastus2.azurecontainerapps.io/authorize?client_id=123&redirect_uri=https://src.ambitiousdesert-52c4453d.eastus2.azurecontainerapps.io/dummyRedirect&response_type=code&code_challenge_method=S256&code_challenge=test&resource=http://test.com
-
+### 
 ### 
 # @name registerClient
 POST {{deployedAddress}}/register
 Content-Type: application/json
 Accept: application/json
 
-{
-   "redirect_uris":[
-      "https://client.example.org/callback",
-      "https://client.example.org/callback2"
-   ],
-   "client_name":"My Example Client",
-   "client_name#ja-Jpan-JP":"\u30AF\u30E9\u30A4\u30A2\u30F3\u30C8\u540D",
-   "token_endpoint_auth_method":"client_secret_basic",
-   "policy_uri":"https://client.example.org/policy.html",
-   "jwks":{
-      "keys":[
-         {
-            "e":"AQAB",
-            "n":"nj3YJwsLUFl9BmpAbkOswCNVx17Eh9wMO-_AReZwBqfaWFcfGHrZXsIV2VMCNVNU8Tpb4obUaSXcRcQ-VMsfQPJm9IzgtRdAY8NN8Xb7PEcYyklBjvTtuPbpzIaqyiUepzUXNDFuAOOkrIol3WmflPUUgMKULBN0EUd1fpOD70pRM0rlp_gg_WNUKoW1V-3keYUJoXH9NztEDm_D2MQXj9eGOJJ8yPgGL8PAZMLe2R7jb9TxOCPDED7tY_TU4nFPlxptw59A42mldEmViXsKQt60s1SLboazxFKveqXC_jpLUt22OC6GUG63p-REw-ZOr3r845z50wMuzifQrMI9bQ",
-            "kty":"RSA"
-         }
-      ]
-   },
-   "example_extension_parameter":"example_value"
-}
+{"redirect_uris":["https://chatgpt.com/connector_platform_oauth_redirect"],"client_name":"ChatGPT","token_endpoint_auth_method":"none","grant_types":["authorization_code","refresh_token"],"response_types":["code"],"scope":null}
+
+
 ### 
 
 ### Test GetClient
@@ -60,7 +40,7 @@ Content-Type: application/json
 Accept: application/json
 
 {
-    "code": "PLmQD38_Eb-LAC7YyefaLj2hx9uxks6Qqs-FsKDOp5E",
+    "code": "VNCBMM48igOE67Y7hPdgTAQtOD6flh4aiyy9iRyd2fU",
     "code_verifier": "test",
     "grant_type": "authorization_code"
 }

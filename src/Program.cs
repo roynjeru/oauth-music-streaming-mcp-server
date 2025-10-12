@@ -203,6 +203,7 @@ app.MapPost("/register", ([FromBody] RegisterRequest? regReqBody, HttpRequest re
     {
         clientSecret = HelperMethods.generateRandomString(40);
     }
+    // 2 validation errors for RegisterOAuthClientResponse client_secret Input should be a valid string [type=string_type, input_value=None, input_type=NoneType] For further information visit https://errors.pydantic.dev/2.11/v/string_type scope Input should be a valid string [type=string_type, input_value=None, input_type=NoneType] For further information visit https://errors.pydantic.dev/2.11/v/string_type
 
     var registrationAccessToken = HelperMethods.generateRandomString(40);
     var issuedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
@@ -211,7 +212,6 @@ app.MapPost("/register", ([FromBody] RegisterRequest? regReqBody, HttpRequest re
     var registered = new RegisteredClient
     {
         ClientId = clientId,
-        ClientSecret = clientSecret,
         RedirectUris = regReqBody.redirect_uris,
         ClientName = regReqBody.client_name,
         TokenEndpointAuthMethod = "none",
@@ -276,23 +276,8 @@ app.MapGet("/register/{clientId}", (
             error_description = "Invalid registration access token"
         }, statusCode: 401, contentType: "application/json");
     }
-
-    var resp = new RegisterResponse
-    {
-        client_id = client.ClientId,
-        client_secret = client.ClientSecret,
-        client_id_issued_at = client.ClientIdIssuedAt,
-        client_secret_expires_at = "0", // never expires
-        redirect_uris = client.RedirectUris,
-        grant_types = client.GrantTypes,
-        registration_client_uri = client.RegistrationClientUri,
-        registration_access_token = client.RegistrationAccessToken,
-        token_endpoint_auth_method = client.TokenEndpointAuthMethod,
-        response_types = client.ResponseTypes,
-        scope = client.Scope
-    };
     
-    return Results.Ok(resp);
+    return Results.Ok(client);
 });
 
 // Authorize endpoint
@@ -450,7 +435,7 @@ app.MapGet("/probe", () => Results.Ok("Server is running"));
 
 // mint tokens
 // Token endpoint for MCP clients to exchange an MCP code for an access token.
-app.MapPost("/token", ([FromBody] TokenRequest requestBody, RsaJwtIssuer issuerSvc) =>
+app.MapPost("/token", ([FromForm] TokenRequest requestBody, RsaJwtIssuer issuerSvc) =>
 {
     if (requestBody == null || requestBody.grant_type != "authorization_code")
     {
