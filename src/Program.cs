@@ -9,6 +9,7 @@ using src.Models;
 using src.Services;
 using src.Singletons;
 using System.Text.Json.Serialization;
+using System.Net.Http.Headers;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -441,7 +442,7 @@ app.MapGet("/probe", () => Results.Ok("Server is running"));
 
 // mint tokens
 // Token endpoint for MCP clients to exchange an MCP code for an access token.
-app.MapPost("/token", ([FromForm] TokenRequest requestBody, RsaJwtIssuer issuerSvc) =>
+app.MapPost("/token", ([FromForm] TokenRequest requestBody, RsaJwtIssuer issuerSvc, HttpContext context) =>
 {
     app.Logger.LogInformation("token requestBody: {requestBody}", requestBody.ToString());
 
@@ -464,6 +465,10 @@ app.MapPost("/token", ([FromForm] TokenRequest requestBody, RsaJwtIssuer issuerS
         }, statusCode: 400, contentType: "application/json");
     }
 
+    // validate the client_id exists
+    var clientId = authCodeInfo.ClientId;
+    var client = _registeredClients[clientId];
+
     // validate redirect_uri
 
     // validate PKCE 
@@ -478,8 +483,20 @@ app.MapPost("/token", ([FromForm] TokenRequest requestBody, RsaJwtIssuer issuerS
     // mint token 
     // [TODO]: add additional claims and expiration/lifetime based on spotify token info
     var jwt = issuerSvc.Mint("user1");
+    
+    var resp = new TokenResponse
+    {
+        AccessToken = jwt,
+        TokenType = "Bearer",
+        ExpiresIn = 900, // 15 minutes
+        Scope = client.Scope
+    };
 
-    return Results.Ok(new { access_token = jwt, token_type = "Bearer", expires_in = 900 });
+    context.Response.Headers.CacheControl = "no-store";
+    context.Response.Headers.Pragma = "no-cache";
+    return Results.Json(resp, statusCode: 200, contentType: "application/json");
+
+    // return Results.Ok(new { access_token = jwt, token_type = "Bearer", expires_in = 900 });
 })
 .DisableAntiforgery();
 
