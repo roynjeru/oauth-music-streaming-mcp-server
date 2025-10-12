@@ -13,7 +13,6 @@ using System.Text.Json.Serialization;
 var builder = WebApplication.CreateBuilder(args);
 
 // get URL and port from environment variable if set
-int port = int.Parse(Environment.GetEnvironmentVariable("WEBSITE_PORT"));
 
 var spotifyAuthUrl = "https://accounts.spotify.com/authorize";
 var spotifyScopes = "user-read-private user-read-email streaming user-read-playback-state user-modify-playback-state";
