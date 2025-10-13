@@ -13,8 +13,6 @@ using System.Net.Http.Headers;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// get URL and port from environment variable if set
-
 var spotifyAuthUrl = "https://accounts.spotify.com/authorize";
 var spotifyScopes = "user-read-private user-read-email streaming user-read-playback-state user-modify-playback-state";
 var spotifyClientId = "04e740f554cc46469e3645a37b861a75";
@@ -197,8 +195,6 @@ app.MapPost("/register", ([FromBody] RegisterRequest? regReqBody, HttpRequest re
 
     var clientId = HelperMethods.generateRandomString(24);
 
-    // 2 validation errors for RegisterOAuthClientResponse client_secret Input should be a valid string [type=string_type, input_value=None, input_type=NoneType] For further information visit https://errors.pydantic.dev/2.11/v/string_type scope Input should be a valid string [type=string_type, input_value=None, input_type=NoneType] For further information visit https://errors.pydantic.dev/2.11/v/string_type
-
     var registrationAccessToken = HelperMethods.generateRandomString(40);
     var issuedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
     var registrationClientUri = $"https://{request.Host}/register/{clientId}";
@@ -297,39 +293,39 @@ app.MapGet("/authorize", (
     [FromQuery] string? resource, HttpRequest request) =>
 {
     // Validate client
-    // if (!_registeredClients.TryGetValue(client_id, out var client))
-    // {
-    //     return Results.BadRequest(new OAuthErrorResponse
-    //     {
-    //         Error = "invalid_client",
-    //         ErrorDescription = "Client not found"
-    //     });
-    // }
+    if (!_registeredClients.TryGetValue(client_id, out var client))
+    {
+        return Results.BadRequest(new OAuthErrorResponse
+        {
+            Error = "invalid_client",
+            ErrorDescription = "Client not found"
+        });
+    }
 
     // Validate redirect_uri
-    // if (string.IsNullOrEmpty(redirect_uri))
-    // {
-    //     if (client.RedirectUris.Count == 1)
-    //     {
-    //         redirect_uri = client.RedirectUris[0];
-    //     }
-    //     else
-    //     {
-    //         return Results.BadRequest(new OAuthErrorResponse
-    //         {
-    //             Error = "invalid_request",
-    //             ErrorDescription = "redirect_uri is required when client has multiple registered URIs"
-    //         });
-    //     }
-    // }
-    // else if (!client.RedirectUris.Contains(redirect_uri))
-    // {
-    //     return Results.BadRequest(new OAuthErrorResponse
-    //     {
-    //         Error = "invalid_request",
-    //         ErrorDescription = "Unregistered redirect_uri"
-    //     });
-    // }
+    if (string.IsNullOrEmpty(redirect_uri))
+    {
+        if (client.RedirectUris.Length == 1)
+        {
+            redirect_uri = client.RedirectUris[0];
+        }
+        else
+        {
+            return Results.BadRequest(new OAuthErrorResponse
+            {
+                Error = "invalid_request",
+                ErrorDescription = "redirect_uri is required when client has multiple registered URIs"
+            });
+        }
+    }
+    else if (!client.RedirectUris.Contains(redirect_uri))
+    {
+        return Results.BadRequest(new OAuthErrorResponse
+        {
+            Error = "invalid_request",
+            ErrorDescription = "Unregistered redirect_uri"
+        });
+    }
 
     // Validate response_type
     if (response_type != "code")
@@ -469,11 +465,53 @@ app.MapPost("/token", ([FromForm] TokenRequest requestBody, RsaJwtIssuer issuerS
     var clientId = authCodeInfo.ClientId;
     var client = _registeredClients[clientId];
 
-    // validate redirect_uri
+    // validate redirect_uri (if provided in token request)
+    if (!string.IsNullOrEmpty(requestBody.redirect_uri))
+    {
+        // Stored ClientRedirectUri was saved with query params (code & state). Strip query portion when comparing.
+        var expectedRedirect = authCodeInfo.ClientRedirectUri ?? string.Empty;
+        var qIdx = expectedRedirect.IndexOf('?');
+        if (qIdx >= 0)
+        {
+            expectedRedirect = expectedRedirect.Substring(0, qIdx);
+        }
 
-    // validate PKCE 
+        if (!string.Equals(requestBody.redirect_uri, expectedRedirect, StringComparison.OrdinalIgnoreCase))
+        {
+            return Results.Json(new
+            {
+                error = "invalid_request",
+                error_description = "redirect_uri does not match the one used in the authorization request"
+            }, statusCode: 400, contentType: "application/json");
+        }
+    }
 
-    // validate code_verifier and code_challenge
+    // validate PKCE: code_verifier must be present and must match the stored code_challenge
+    if (string.IsNullOrEmpty(requestBody.code_verifier))
+    {
+        return Results.Json(new
+        {
+            error = "invalid_request",
+            error_description = "code_verifier is required"
+        }, statusCode: 400, contentType: "application/json");
+    }
+
+    // The authorization request enforces S256, so verify using the stored challenge.
+    var pkceOk = HelperMethods.VerifyPkce(requestBody.code_verifier, authCodeInfo.CodeChallenge, null);
+    if (!pkceOk)
+    {
+        app.Logger.LogWarning("PKCE verification failed for auth code {code}", requestBody.code);
+        return Results.Json(new
+        {
+            error = "invalid_grant",
+            error_description = "PKCE verification failed"
+        }, statusCode: 400, contentType: "application/json");
+    }
+    app.Logger.LogInformation("PKCE verification succeeded for auth code {code}", requestBody.code);
+
+
+    // One-time use: remove the authorization code so it cannot be replayed
+    _authCodes.TryRemove(requestBody.code, out _);
 
     // [TODO] 
     // Generates encrypted session key for MCP API access
@@ -496,7 +534,6 @@ app.MapPost("/token", ([FromForm] TokenRequest requestBody, RsaJwtIssuer issuerS
     context.Response.Headers.Pragma = "no-cache";
     return Results.Json(resp, statusCode: 200, contentType: "application/json");
 
-    // return Results.Ok(new { access_token = jwt, token_type = "Bearer", expires_in = 900 });
 })
 .DisableAntiforgery();
 
