@@ -83,6 +83,13 @@ namespace src.Helpers
             s = s.Replace('+', '-').Replace('/', '_');
             return s;
         }
+
+        public static bool IsScopeSubset(string requested, string granted)
+        {
+            var req = new HashSet<string>((requested ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries));
+            var grant = new HashSet<string>((granted ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries));
+            return req.IsSubsetOf(grant);
+        }
     }
 }
 

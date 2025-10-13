@@ -38,6 +38,7 @@ ConcurrentDictionary<string, AuthorizationCodeInfo> _authCodes = new();
 ConcurrentDictionary<string, string> _mcpCodeMap = new();
 ConcurrentDictionary<string, TokenInfo> _tokens = new();
 ConcurrentDictionary<string, RegisteredClient> _registeredClients = new();
+ConcurrentDictionary<string, TokenRefreshInfo> _refreshTokens = new();
 
 RSA _rsa = RSA.Create(2048);
 string _keyID = Guid.NewGuid().ToString();
@@ -442,100 +443,209 @@ app.MapPost("/token", ([FromForm] TokenRequest requestBody, RsaJwtIssuer issuerS
 {
     app.Logger.LogInformation("token requestBody: {requestBody}", requestBody.ToString());
 
-    if (requestBody == null || requestBody.grant_type != "authorization_code")
+    if (requestBody == null || requestBody?.grant_type is null)
     {
-        return Results.Json(new
-        {
-            error = "unsupported_grant_type",
-            error_description = "Only authorization_code grant_type is supported"
-        }, statusCode: 400, contentType: "application/json");
+        return Results.Json(new { error = "invalid_request", error_description = "grant_type is required" },
+            statusCode: 400, contentType: "application/json");
     }
 
-    // validate the mcpAuthCode from request exits in the store
-    if (string.IsNullOrEmpty(requestBody.code) || !_authCodes.TryGetValue(requestBody.code, out var authCodeInfo))
+    if (requestBody.grant_type == "authorization_code")
     {
-        return Results.Json(new
+        // validate the mcpAuthCode from request exits in the store
+        if (string.IsNullOrEmpty(requestBody.code) || !_authCodes.TryGetValue(requestBody.code, out var authCodeInfo))
         {
-            error = "invalid_grant",
-            error_description = "Authorization code is invalid or has expired"
-        }, statusCode: 400, contentType: "application/json");
-    }
-
-    // validate the client_id exists
-    var clientId = authCodeInfo.ClientId;
-    var client = _registeredClients[clientId];
-
-    // validate redirect_uri (if provided in token request)
-    if (!string.IsNullOrEmpty(requestBody.redirect_uri))
-    {
-        // Stored ClientRedirectUri was saved with query params (code & state). Strip query portion when comparing.
-        var expectedRedirect = authCodeInfo.ClientRedirectUri ?? string.Empty;
-        var qIdx = expectedRedirect.IndexOf('?');
-        if (qIdx >= 0)
-        {
-            expectedRedirect = expectedRedirect.Substring(0, qIdx);
+            return Results.Json(new
+            {
+                error = "invalid_grant",
+                error_description = "Authorization code is invalid or has expired"
+            }, statusCode: 400, contentType: "application/json");
         }
 
-        if (!string.Equals(requestBody.redirect_uri, expectedRedirect, StringComparison.OrdinalIgnoreCase))
+        // validate the client_id exists
+        var clientId = authCodeInfo.ClientId;
+        var client = _registeredClients[clientId];
+
+        // validate redirect_uri (if provided in token request)
+        if (!string.IsNullOrEmpty(requestBody.redirect_uri))
+        {
+            // Stored ClientRedirectUri was saved with query params (code & state). Strip query portion when comparing.
+            var expectedRedirect = authCodeInfo.ClientRedirectUri ?? string.Empty;
+            var qIdx = expectedRedirect.IndexOf('?');
+            if (qIdx >= 0)
+            {
+                expectedRedirect = expectedRedirect.Substring(0, qIdx);
+            }
+
+            if (!string.Equals(requestBody.redirect_uri, expectedRedirect, StringComparison.OrdinalIgnoreCase))
+            {
+                return Results.Json(new
+                {
+                    error = "invalid_request",
+                    error_description = "redirect_uri does not match the one used in the authorization request"
+                }, statusCode: 400, contentType: "application/json");
+            }
+        }
+
+        // validate PKCE: code_verifier must be present and must match the stored code_challenge
+        if (string.IsNullOrEmpty(requestBody.code_verifier))
         {
             return Results.Json(new
             {
                 error = "invalid_request",
-                error_description = "redirect_uri does not match the one used in the authorization request"
+                error_description = "code_verifier is required"
             }, statusCode: 400, contentType: "application/json");
         }
-    }
 
-    // validate PKCE: code_verifier must be present and must match the stored code_challenge
-    if (string.IsNullOrEmpty(requestBody.code_verifier))
+        // The authorization request enforces S256, so verify using the stored challenge.
+        var pkceOk = HelperMethods.VerifyPkce(requestBody.code_verifier, authCodeInfo.CodeChallenge, null);
+        if (!pkceOk)
+        {
+            app.Logger.LogWarning("PKCE verification failed for auth code {code}", requestBody.code);
+            return Results.Json(new
+            {
+                error = "invalid_grant",
+                error_description = "PKCE verification failed"
+            }, statusCode: 400, contentType: "application/json");
+        }
+        app.Logger.LogInformation("PKCE verification succeeded for auth code {code}", requestBody.code);
+
+
+        // One-time use: remove the authorization code so it cannot be replayed
+        _authCodes.TryRemove(requestBody.code, out _);
+
+        // [TODO] 
+        // Generates encrypted session key for MCP API access
+        // Caches the access token with session key mapping
+        // Returns encrypted session key to MCP client
+
+        // mint token 
+        // [TODO]: add additional claims and expiration/lifetime based on spotify token info
+        var jwt = issuerSvc.Mint("user1", lifetime: TimeSpan.FromMinutes(15));
+
+        // create a long-lived refresh token and store it with the client id
+        var refreshToken = HelperMethods.GenerateRandomToken();
+        _refreshTokens[refreshToken] = new TokenRefreshInfo
+        {
+            ClientId = clientId,
+            Subject = "user1",
+            Scope = client.Scope,
+            ExpiresAt = DateTimeOffset.UtcNow.AddDays(30)
+        };
+
+        var resp = new TokenResponse
+        {
+            AccessToken = jwt,
+            TokenType = "Bearer",
+            ExpiresIn = 900, // 15 minutes
+            RefreshToken = refreshToken,
+            Scope = client.Scope
+        };
+
+        context.Response.Headers.CacheControl = "no-store";
+        context.Response.Headers.Pragma = "no-cache";
+        return Results.Json(resp, statusCode: 200, contentType: "application/json");
+    }
+    else if (requestBody.grant_type == "refresh_token")
+    {
+        app.Logger.LogInformation("Refresh token requestBody: {requestBody}", requestBody.ToString());
+        // 1) Basic validation
+        if (string.IsNullOrEmpty(requestBody.refresh_token))
+        {
+            return Results.Json(new { error = "invalid_request", error_description = "refresh_token is required" },
+                statusCode: 400, contentType: "application/json");
+        }
+
+        if (!_refreshTokens.TryGetValue(requestBody.refresh_token, out var refreshTokenInfo))
+        {
+            return Results.Json(new { error = "invalid_grant", error_description = "Unknown refresh_token" },
+                statusCode: 400, contentType: "application/json");
+        }
+
+        // 2) Check expiry / revocation
+        if (refreshTokenInfo.Revoked || refreshTokenInfo.ExpiresAt <= DateTimeOffset.UtcNow)
+        {
+            return Results.Json(new { error = "invalid_grant", error_description = "Refresh token is expired or revoked" },
+                statusCode: 400, contentType: "application/json");
+        }
+
+        // 3) validate Bind to client
+        if (string.IsNullOrEmpty(requestBody.client_id) ||
+            !_registeredClients.TryGetValue(requestBody.client_id, out var client) ||
+            client.ClientId != refreshTokenInfo.ClientId)
+        {
+            return Results.Json(new { error = "invalid_client", error_description = "client_id mismatch for refresh_token" },
+                statusCode: 401, contentType: "application/json");
+        }
+
+        // 4) Scope handling (requested scope must be equal or subset)
+        var originalScope = refreshTokenInfo.Scope;
+        var requestedScope = string.IsNullOrWhiteSpace(requestBody.scope) ? originalScope : requestBody.scope;
+        if (!HelperMethods.IsScopeSubset(requestedScope, originalScope))
+        {
+            return Results.Json(new { error = "invalid_scope", error_description = "Requested scope exceeds original grant" },
+                statusCode: 400, contentType: "application/json");
+        }
+
+        // 5) Mint new short-lived access token
+        var newAccess = issuerSvc.Mint(refreshTokenInfo.Subject);
+
+        // 6) Rotation (recommended): revoke old, issue new refresh
+        refreshTokenInfo.Revoked = true;
+        _refreshTokens[requestBody.refresh_token] = refreshTokenInfo;
+        var newRefresh = HelperMethods.GenerateRandomToken();
+        _refreshTokens[newRefresh] = new TokenRefreshInfo()
+        {
+            ClientId = refreshTokenInfo.ClientId,
+            Subject = refreshTokenInfo.Subject,
+            Scope = requestedScope,
+            ExpiresAt = DateTimeOffset.UtcNow.AddDays(30),
+            Parent = requestBody.refresh_token
+        };
+
+        var resp = new TokenResponse
+        {
+            AccessToken = newAccess,
+            TokenType = "Bearer",
+            ExpiresIn = 900,
+            RefreshToken = newRefresh,
+            Scope = requestedScope
+        };
+
+        app.Logger.LogInformation("Issued new access token and refresh token for client {clientId}", client.ClientId);
+
+        context.Response.Headers.CacheControl = "no-store";
+        context.Response.Headers.Pragma = "no-cache";
+        return Results.Json(resp, statusCode: 200, contentType: "application/json");
+    }
+    else
     {
         return Results.Json(new
         {
-            error = "invalid_request",
-            error_description = "code_verifier is required"
+            error = "unsupported_grant_type",
+            error_description = "Only authorization_code and refresh_token are supported"
         }, statusCode: 400, contentType: "application/json");
     }
-
-    // The authorization request enforces S256, so verify using the stored challenge.
-    var pkceOk = HelperMethods.VerifyPkce(requestBody.code_verifier, authCodeInfo.CodeChallenge, null);
-    if (!pkceOk)
-    {
-        app.Logger.LogWarning("PKCE verification failed for auth code {code}", requestBody.code);
-        return Results.Json(new
-        {
-            error = "invalid_grant",
-            error_description = "PKCE verification failed"
-        }, statusCode: 400, contentType: "application/json");
-    }
-    app.Logger.LogInformation("PKCE verification succeeded for auth code {code}", requestBody.code);
-
-
-    // One-time use: remove the authorization code so it cannot be replayed
-    _authCodes.TryRemove(requestBody.code, out _);
-
-    // [TODO] 
-    // Generates encrypted session key for MCP API access
-    // Caches the access token with session key mapping
-    // Returns encrypted session key to MCP client
-
-    // mint token 
-    // [TODO]: add additional claims and expiration/lifetime based on spotify token info
-    var jwt = issuerSvc.Mint("user1");
-    
-    var resp = new TokenResponse
-    {
-        AccessToken = jwt,
-        TokenType = "Bearer",
-        ExpiresIn = 900, // 15 minutes
-        Scope = client.Scope
-    };
-
-    context.Response.Headers.CacheControl = "no-store";
-    context.Response.Headers.Pragma = "no-cache";
-    return Results.Json(resp, statusCode: 200, contentType: "application/json");
 
 })
 .DisableAntiforgery();
+
+app.MapPost("/revoke", ([FromForm] string token, [FromForm] string? token_type_hint) =>
+{
+    if (string.IsNullOrWhiteSpace(token))
+    {
+        return Results.BadRequest(new { error = "invalid_request", error_description = "token is required" });
+    }
+
+    if (_refreshTokens.TryGetValue(token, out var rt))
+    {
+        rt.Revoked = true;
+        _refreshTokens[token] = rt;
+    }
+    // Per RFC 7009, return 200 even if token is unknown
+    return Results.Ok();
+})
+.DisableAntiforgery();
+
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
