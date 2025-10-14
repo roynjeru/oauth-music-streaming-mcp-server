@@ -1,0 +1,68 @@
+sequenceDiagram
+    autonumber
+    participant C as 🧑‍💻 MCP Client
+    participant A as 🔐 Auth Server
+    participant S as 🎵 Spotify Accounts
+    participant JWKS as 🔑 JWKS (Public Keys)
+
+    %% ---- Dynamic Client Registration ----
+    rect rgb(255,250,230)
+    note over C,A: 🧾 Dynamic Client Registration (RFC 7591 §3.3)
+    C->>A: POST /register { redirect_uris, grant_types, response_types, scope }
+    A-->>C: 201 Created { client_id, registration_access_token, registration_client_uri }
+    end
+
+    %% ---- Discovery & JWKS ----
+    rect rgb(235,255,245)
+    note over C,A: 🌐 Discovery and JWKS Fetch
+    C->>A: GET /.well-known/openid-configuration
+    A-->>C: 200 { authorization_endpoint, token_endpoint, jwks_uri }
+    C->>JWKS: GET /.well-known/jwks.json
+    JWKS-->>C: 200 { RSA public keys }
+    end
+
+    %% ---- Authorization Code + PKCE ----
+    rect rgb(235,245,255)
+    note over C,A: 🔑 Authorization Code Flow (PKCE S256)
+    C->>A: GET /authorize (client_id, redirect_uri, code_challenge)
+    A->>S: Redirect to Spotify /authorize
+    S-->>A: Redirect /spotify-callback?code&state
+    A->>S: POST /api/token (authorization_code, code_verifier)
+    S-->>A: 200 { access_token, refresh_token }
+    A->>A: Bind Spotify tokens to mcpAuthCode
+    A-->>C: Redirect redirect_uri?code=mcpAuthCode&state
+    end
+
+    %% ---- Token Exchange (MCP JWT) ----
+    rect rgb(255,255,230)
+    note over C,A: 🪙 Exchange Authorization Code for MCP JWT
+    C->>A: POST /token (grant_type=authorization_code, code, code_verifier)
+    A->>A: Validate PKCE, mint RSA-signed JWT (RS256, kid)
+    A-->>C: 200 { access_token=JWT, refresh_token }
+    end
+
+    %% ---- Refresh Token Rotation ----
+    rect rgb(240,250,255)
+    note over C,A: 🔄 Refresh Token Flow
+    C->>A: POST /token (grant_type=refresh_token, refresh_token)
+    A->>A: Rotate refresh token, mint new JWT
+    A-->>C: 200 { access_token, refresh_token(new) }
+    end
+
+    %% ---- Federated Spotify Token Exchange ----
+    rect rgb(240,255,240)
+    note over C,A: 🎶 Exchange MCP Token for Spotify Token
+    C->>A: POST /exchange/spotify-token (Bearer <MCP JWT>)
+    A->>JWKS: Validate JWT signature and claims
+    A->>S: Refresh Spotify access token if expired
+    S-->>A: 200 { access_token, refresh_token }
+    A-->>C: 200 { access_token (Spotify), token_type=Bearer }
+    end
+
+    %% ---- Revocation ----
+    rect rgb(250,240,250)
+    note over C,A: 🧹 Token Revocation
+    C->>A: POST /revoke (token=refresh_token)
+    A->>A: Mark refresh_token as revoked
+    A-->>C: 200 {}
+    end

@@ -1,0 +1,98 @@
+sequenceDiagram
+    autonumber
+    participant C as MCP Client (Public)
+    participant A as Your Auth Server
+    participant S as Spotify Accounts
+    participant JWKS as /.well-known/jwks.json
+
+    %% ---- Optional: Dynamic Client Registration ----
+    rect rgb(245,245,245)
+    note over C,A: (Optional) Dynamic Client Registration (RFC 7591 §3.3)
+    C->>A: POST /register { redirect_uris, grant_types=[authorization_code], response_types=[code], scope }
+    A-->>C: 201 Created { client_id, registration_access_token, registration_client_uri }
+    end
+
+    %% ---- Discovery & JWKS ----
+    C->>A: GET /.well-known/openid-configuration
+    A-->>C: 200 { issuer, authorization_endpoint, token_endpoint, jwks_uri, code_challenge_methods: [S256] }
+    C->>JWKS: GET /.well-known/jwks.json
+    JWKS-->>C: 200 { keys:[{kty:"RSA", kid, alg:"RS256", n, e}] }
+
+    %% ---- Authorization Code + PKCE front-channel ----
+    rect rgb(235,248,255)
+    note over C,A: Start Authorization (PKCE S256)
+    C->>A: GET /authorize?client_id&response_type=code&redirect_uri&code_challenge&code_challenge_method=S256&scope&state
+    alt Client/redirect validation fails
+        A-->>C: 302 redirect_uri?error=invalid_request
+    else response_type != code
+        A-->>C: 302 redirect_uri?error=unsupported_response_type
+    else code_challenge_method != S256
+        A-->>C: 302 redirect_uri?error=invalid_request
+    else
+        A->>A: Generate mcpAuthCode, create spotifyVerifier and spotifyChallenge, map state to mcpAuthCode
+        A-->>C: 302 Redirect to Spotify /authorize (client_id, scope, redirect_uri=/spotify-callback, code_challenge=S256, state)
+    end
+    end
+
+    %% ---- Spotify consent & callback ----
+    S-->>A: GET /spotify-callback?code&state
+    A->>S: POST /api/token (authorization_code, code_verifier=spotifyVerifier, redirect_uri)
+    S-->>A: 200 { access_token, refresh_token, expires_in, scope }
+    A->>A: Bind Spotify tokens to mcpAuthCode (for later exchange)
+    A-->>C: 302 redirect_uri?code=mcpAuthCode&state
+
+    %% ---- Back-channel: token exchange for MCP JWT ----
+    rect rgb(255,250,235)
+    note over C,A: Exchange code and PKCE verifier for MCP access token (JWT)
+    C->>A: POST /token (grant_type=authorization_code, code=mcpAuthCode, code_verifier, [redirect_uri])
+    alt Unknown or expired code
+        A-->>C: 400 { error: "invalid_grant" }
+    else redirect_uri mismatch
+        A-->>C: 400 { error: "invalid_request" }
+    else Missing code_verifier
+        A-->>C: 400 { error: "invalid_request" }
+    else PKCE verify fail
+        A-->>C: 400 { error: "invalid_grant" }
+    else
+        A->>A: Invalidate auth code (one-time use)
+        A->>A: Mint RSA-signed JWT (RS256, kid) via RsaJwtIssuer and create refresh_token
+        A-->>C: 200 { access_token=JWT, token_type=Bearer, expires_in=900, refresh_token, scope }
+    end
+    end
+
+    %% ---- Refresh token rotation ----
+    C->>A: POST /token (grant_type=refresh_token, refresh_token, client_id, [scope])
+    alt Unknown or expired refresh_token
+        A-->>C: 400 { error: "invalid_grant" }
+    else client_id mismatch
+        A-->>C: 401 { error: "invalid_client" }
+    else scope escalation
+        A-->>C: 400 { error: "invalid_scope" }
+    else
+        A->>A: Mint new short-lived JWT and rotate refresh token (revoke parent)
+        A-->>C: 200 { access_token, refresh_token(new), scope }
+    end
+
+    %% ---- Federated Spotify token exchange (downstream) ----
+    rect rgb(240,255,240)
+
+    C->>A: POST /exchange/spotify-token (Authorization: Bearer <MCP JWT>)
+    A->>JWKS: Validate JWT (iss, aud, exp, RS256, kid)
+    alt Invalid JWT
+        A-->>C: 401 { error: "invalid_token" }
+    else
+        A->>A: Lookup bound Spotify tokens by MCP access token
+        alt Missing mapping
+            A-->>C: 404 { error: "not_found" }
+        else
+            A->>S: If needed, refresh Spotify access_token with refresh_token
+            S-->>A: 200 { access_token, refresh_token?, expires_in, scope }
+            A-->>C: 200 { access_token (Spotify), token_type=Bearer, expires_in, scope, refresh_token }
+        end
+    end
+    end
+
+    %% ---- Revocation ----
+    C->>A: POST /revoke (token=refresh_token)
+    A->>A: Mark refresh_token as revoked (idempotent)
+    A-->>C: 200 {}
