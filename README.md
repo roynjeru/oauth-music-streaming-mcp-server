@@ -56,6 +56,10 @@ Implements Spotify’s [Authorization Code with PKCE flow](https://developer.spo
 4. Server exchanges Spotify code for access/refresh tokens  
 5. MCP issues its own JWT-bound token (`/token`)
 
+
+[Sequence Diagram](./diagrams/sequence%20diagram.png)
+
+
 This ensures that no secrets are exposed client-side and that token exchanges are verified using `code_verifier` and `S256`.
 
 ```csharp
