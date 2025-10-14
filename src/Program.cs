@@ -635,8 +635,7 @@ app.MapPost("/token", ([FromForm] TokenRequest requestBody, RsaJwtIssuer issuerS
 })
 .DisableAntiforgery();
 
-app.MapPost("/exchange/spotify-token", async ([FromBody] SpotifyTokenExchangeRequest body,
-    HttpRequest request,
+app.MapPost("/exchange/spotify-token", async (HttpRequest request,
     IHttpClientFactory httpFactory
 ) =>
 {
