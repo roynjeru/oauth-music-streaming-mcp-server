@@ -39,6 +39,7 @@ ConcurrentDictionary<string, string> _mcpCodeMap = new();
 ConcurrentDictionary<string, TokenInfo> _tokens = new();
 ConcurrentDictionary<string, RegisteredClient> _registeredClients = new();
 ConcurrentDictionary<string, TokenRefreshInfo> _refreshTokens = new();
+ConcurrentDictionary<string, SpotifyTokenResponse> _mcpToSpotify = new();
 
 RSA _rsa = RSA.Create(2048);
 string _keyID = Guid.NewGuid().ToString();
@@ -522,6 +523,11 @@ app.MapPost("/token", ([FromForm] TokenRequest requestBody, RsaJwtIssuer issuerS
         // [TODO]: add additional claims and expiration/lifetime based on spotify token info
         var jwt = issuerSvc.Mint("user1", lifetime: TimeSpan.FromMinutes(15));
 
+        if (authCodeInfo?.SpotifyTokenResponse is not null)
+        {
+            _mcpToSpotify[jwt] = authCodeInfo.SpotifyTokenResponse;
+        }
+
         // create a long-lived refresh token and store it with the client id
         var refreshToken = HelperMethods.GenerateRandomToken();
         _refreshTokens[refreshToken] = new TokenRefreshInfo
@@ -628,6 +634,74 @@ app.MapPost("/token", ([FromForm] TokenRequest requestBody, RsaJwtIssuer issuerS
 
 })
 .DisableAntiforgery();
+
+app.MapPost("/exchange/spotify-token", async ([FromBody] SpotifyTokenExchangeRequest body,
+    HttpRequest request,
+    IHttpClientFactory httpFactory
+) =>
+{
+    // 1) Extract & validate our Bearer (the MCP access token we minted)
+    var authHeader = request.Headers.Authorization.ToString();
+    if (string.IsNullOrWhiteSpace(authHeader) || !authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.Json(new { error = "invalid_request", error_description = "Missing or invalid Authorization header" }, statusCode: 401);
+    }
+
+    var bearer = authHeader.Substring("Bearer ".Length).Trim();
+
+    // Build token validation parameters using the same issuer/audience/key you mint with
+    var tokenHandler = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler();
+    var validationParams = new TokenValidationParameters
+    {
+        ValidateAudience = true,
+        ValidateIssuer = true,
+        ValidateLifetime = true,
+        ValidateIssuerSigningKey = true,
+        ValidAudience = "my-mcp-server",
+        ValidIssuer = env_issuer,
+        ClockSkew = TimeSpan.FromSeconds(30)
+    };
+
+    try
+    {
+        tokenHandler.ValidateToken(bearer, validationParams, out var _);
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { error = "invalid_token", error_description = $"Access token validation failed: {ex.Message}" }, statusCode: 401);
+    }
+
+    app.Logger.LogInformation("/exchange/spotify-token Validated MCP access token");
+
+    // 2) Look up the Spotify token response bound to this MCP access token
+    if (!_mcpToSpotify.TryGetValue(bearer, out SpotifyTokenResponse spotifyTokenResponse) || spotifyTokenResponse is null)
+    {
+        return Results.Json(new { error = "not_found", error_description = "No Spotify token found for this access token" }, statusCode: 404);
+    }
+
+    // 3) If Spotify access token is expired, refresh it
+    var now = DateTimeOffset.UtcNow;
+
+    if (spotifyTokenResponse.GetExpiry() <= now.AddSeconds(30))
+    {
+        var httpService = app.Services.GetRequiredService<HttpService>();
+        var requestResponse = await httpService.RefreshSpotifyAccessToken(spotifyTokenResponse.RefreshToken, spotifyClientId);
+        spotifyTokenResponse = requestResponse;
+        _mcpToSpotify[bearer] = spotifyTokenResponse; // update mapping
+    }
+
+    // 4) Return the Spotify access token payload
+    return Results.Json(new
+    {
+        access_token = spotifyTokenResponse.AccessToken,
+        token_type = "Bearer",
+        expires_in = spotifyTokenResponse.ExpiresIn,
+        scope = spotifyTokenResponse.Scope,
+        refresh_token = spotifyTokenResponse.RefreshToken
+    }, statusCode: 200, contentType: "application/json");
+})
+.DisableAntiforgery();
+
 
 app.MapPost("/revoke", ([FromForm] string token, [FromForm] string? token_type_hint) =>
 {

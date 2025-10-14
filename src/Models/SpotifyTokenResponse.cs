@@ -15,14 +15,25 @@ namespace src.Models
         public required int ExpiresIn { get; init; }
 
         [JsonPropertyName("refresh_token")]
-        public string? RefreshToken { get; init; }
+        public string? RefreshToken { get; set; }
 
         [JsonPropertyName("scope")]
         public string? Scope { get; init; }
+        private DateTimeOffset? ExpiresAt { get; set; }
 
         public override string ToString()
         {
             return $"AccessToken: {AccessToken}, TokenType: {TokenType}, ExpiresIn: {ExpiresIn}, RefreshToken: {RefreshToken}, Scope: {Scope}";
+        }
+
+        public void SetExpiry()
+        {
+            ExpiresAt = DateTimeOffset.UtcNow.AddSeconds(ExpiresIn);
+        }
+
+        public DateTimeOffset GetExpiry()
+        {
+            return ExpiresAt ?? DateTimeOffset.UtcNow.AddSeconds(-5);
         }
     }
 }
