@@ -636,7 +636,8 @@ app.MapPost("/token", ([FromForm] TokenRequest requestBody, RsaJwtIssuer issuerS
 .DisableAntiforgery();
 
 app.MapPost("/exchange/spotify-token", async (HttpRequest request,
-    IHttpClientFactory httpFactory
+    IHttpClientFactory httpFactory,
+    KeyMaterial keyMaterial
 ) =>
 {
     // 1) Extract & validate our Bearer (the MCP access token we minted)
@@ -658,7 +659,9 @@ app.MapPost("/exchange/spotify-token", async (HttpRequest request,
         ValidateIssuerSigningKey = true,
         ValidAudience = "my-mcp-server",
         ValidIssuer = env_issuer,
-        ClockSkew = TimeSpan.FromSeconds(30)
+        ClockSkew = TimeSpan.FromSeconds(30),
+        // Provide the signing key so the validator can verify signatures.
+        IssuerSigningKey = new RsaSecurityKey(keyMaterial.Rsa) { KeyId = keyMaterial.Kid }
     };
 
     try
@@ -673,7 +676,7 @@ app.MapPost("/exchange/spotify-token", async (HttpRequest request,
     app.Logger.LogInformation("/exchange/spotify-token Validated MCP access token");
 
     // 2) Look up the Spotify token response bound to this MCP access token
-    if (!_mcpToSpotify.TryGetValue(bearer, out SpotifyTokenResponse spotifyTokenResponse) || spotifyTokenResponse is null)
+    if (!_mcpToSpotify.TryGetValue(bearer, out var spotifyTokenResponse) || spotifyTokenResponse is null)
     {
         return Results.Json(new { error = "not_found", error_description = "No Spotify token found for this access token" }, statusCode: 404);
     }
@@ -684,9 +687,17 @@ app.MapPost("/exchange/spotify-token", async (HttpRequest request,
     if (spotifyTokenResponse.GetExpiry() <= now.AddSeconds(30))
     {
         var httpService = app.Services.GetRequiredService<HttpService>();
-        var requestResponse = await httpService.RefreshSpotifyAccessToken(spotifyTokenResponse.RefreshToken, spotifyClientId);
-        spotifyTokenResponse = requestResponse;
-        _mcpToSpotify[bearer] = spotifyTokenResponse; // update mapping
+        try
+        {
+            var requestResponse = await httpService.RefreshSpotifyAccessToken(spotifyTokenResponse.RefreshToken ?? string.Empty, spotifyClientId);
+            spotifyTokenResponse = requestResponse;
+            _mcpToSpotify[bearer] = spotifyTokenResponse; // update mapping
+        }
+        catch (src.Models.SpotifyApiException ex)
+        {
+            app.Logger.LogError(ex, "Spotify refresh failed: {status} {body}", ex.StatusCode, ex.ResponseBody);
+            return Results.Json(new { error = "upstream_error", error_description = "Failed to refresh Spotify token" }, statusCode: 502);
+        }
     }
 
     // 4) Return the Spotify access token payload
