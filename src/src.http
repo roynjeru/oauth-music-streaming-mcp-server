@@ -1,6 +1,9 @@
 @httpAddress = http://0.0.0.0:8080
 @httpsAddress = https://0.0.0.0:7098
 @deployedAddress = https://src.ambitiousdesert-52c4453d.eastus2.azurecontainerapps.io
+@mcpServer = https://server.yellowcoast-71e7fc46.eastus2.azurecontainerapps.io
+
+@receivedOAuthToken = 
 
 ### 
 GET {{httpAddress}}/
@@ -50,3 +53,11 @@ code=wBsPDsv0kpY3pOheXrAMBTWJayGThvl9MBzFqOpvYUY
 
 
 ### 
+# @name GETMcpHome
+GET {{mcpServer}}
+Authorization: Bearer {{token.response.body.access_token}}
+
+### 
+# @name ExchangeToken
+POST {{deployedAddress}}/exchange/spotify-token
+Authorization: Bearer {{receivedOAuthToken}}
